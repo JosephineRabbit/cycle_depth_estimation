@@ -8,20 +8,21 @@ from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 import torch
 if __name__ == '__main__':
-    writer_train = SummaryWriter(log_dir='./summary/synthia_segCycle')
-    writer_test = SummaryWriter(log_dir='./summary/synthia_segCycle')
+    writer = SummaryWriter(log_dir='./summary/synthia_seg')
     opt = TrainOptions().parse()
-    opt.name='synthia_segCycle'
+    opt.name='synthia_seg'
 
     dataset_train = dataloader(opt,train_or_test='train')
     dataset_test = dataloader(opt,train_or_test='test')
+    # model = create_model_seg(opt)
     model = create_model_segCycle(opt)
     model.setup(opt)
+    # model.net_s2t.load_state_dict(torch.load('/home/gwl/PycharmProjects/cloned/pytorch-CycleGAN-and-pix2pix/checkpoints/cycle_gan_synthia/iter_40000_net_G_A.pth'))
+    # model.load_networks('iter_5000')
     visualizer = Visualizer(opt)
     total_steps = 0
     global_iter=0
-
-    for epoch in range(1,30):
+    for epoch in range(1,40):
         epoch_start_time = time.time()
         iter_data_time = time.time()
         epoch_iter = 0
@@ -40,11 +41,11 @@ if __name__ == '__main__':
                         model.optimize_parameters(train_or_test='test')
                     errors = model.get_current_losses()
                     for name, error in errors.items():
-                        writer_test.add_scalar("{}test/{}".format(opt.name, name), error, global_iter+ii)
+                        writer.add_scalar("{}test/{}".format(opt.name, name), error, global_iter+ii)
                     images = model.get_current_visuals()
                     for name, img in images.items():
                         im = torch.from_numpy(img.transpose([2, 0, 1])).squeeze(0)
-                        writer_test.add_image("{}test/img_{}".format(opt.name, name), im, global_iter+ii)
+                        writer.add_image("{}test/{}".format(opt.name, name), im, global_iter+ii)
                 print("validation done")
 #---------------------------------------------
             global_iter+=1
@@ -59,20 +60,17 @@ if __name__ == '__main__':
             if (global_iter % 50 == 0):
                 errors = model.get_current_losses()
                 for name, error in errors.items():
-                    writer_train.add_scalar("{}train/{}".format(opt.name, name), error, global_iter)
+                    writer.add_scalar("{}train/{}".format(opt.name, name), error, global_iter)
                 images = model.get_current_visuals()
-
                 for name, img in images.items():
-                    img=img/img.max()
                     img = torch.from_numpy(img.transpose([2, 0, 1]))
-                    writer_train.add_image("{}train/img_{}".format(opt.name, name), img, global_iter)
+                    writer.add_image("{}train/img_{}".format(opt.name,name), img, global_iter)
             if total_steps % opt.save_latest_freq == 0:
                 print('saving the latest model (epoch %d, total_steps %d)' %
                       (epoch, total_steps))
                 model.save_networks('iter_%d'%total_steps)
 
             iter_data_time = time.time()
-
         if epoch % 5 == 0:
             print('saving the model at the end of epoch %d, iters %d' %
                   (epoch, total_steps))
