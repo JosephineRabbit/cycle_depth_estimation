@@ -165,14 +165,8 @@ class _Transition(nn.Sequential):
         self.add_module('relu', nn.ReLU(inplace=True))
         self.add_module('conv', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False))
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
-class pspTransition(nn.Sequential):
-    def __init__(self, num_input_features, num_output_features):
-        super(pspTransition, self).__init__()
-        self.add_module('norm', nn.BatchNorm2d(num_input_features))
-        self.add_module('relu', nn.ReLU(inplace=True))
-        self.add_module('conv1', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False))
-        self.add_module('conv2', nn.Conv2d(num_input_features, num_output_features, kernel_size=2, stride=2,padding=2, bias=False))
-        self.add_module('conv2', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=2,dilation=1, bias=False))
+
+
 
 
 class Feature_net(nn.Module):
@@ -201,20 +195,43 @@ class Feature_net(nn.Module):
                 trans = _Transition(num_input_features=num_features, num_output_features=num_features // 2)
                 self.features.add_module('transition%d' % (i + 1), trans)
                 num_features = num_features // 2
-            if i == len(block_config) - 1:
-                trans = pspTransition(num_input_features=num_features, num_output_features=mid_nc)
-                self.features.add_module('transition%d' % (i + 1), trans)
-
+            #if i == len(block_config) - 1:
+            #    trans = pspTransition(num_input_features=num_features, num_output_features=mid_nc)
+            #    self.features.add_module('transition%d' % (i + 1), trans)
+        num_input_features = num_features
+        self.psp = []
+        num_output_features = mid_nc
+        self.psp.append(nn.BatchNorm2d(num_input_features).cuda())
+        self.psp.append(nn.ReLU(inplace=True).cuda())
+        self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=1, stride=1, bias=False).cuda())
+        self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=1, stride=1, dilation=1, bias=False).cuda())
+        self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=2, stride=1,padding=1, dilation=2,
+                                  bias=False).cuda())
+        self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=3, stride=1,padding=2, dilation=2,
+                                  bias=False).cuda())
+      #  self.psp.append(nn.Conv2d(num_input_features, num_output_features / 5, kernel_size=3, stride=1, dilation=2,
+       #                           bias=False))
 
         # Final batch norm
-        self.features.add_module('norm5', nn.BatchNorm2d(mid_nc))
+        self.psp.append(nn.BatchNorm2d(mid_nc).cuda())
 
 
     def forward(self,input):
         for i, fe in enumerate(self.features):
             input = fe.forward(input)
             print(i,input.shape)
+        input  = self.psp[0](input)
+        input = self.psp[1](input)
+        #input = self.psp
+        print(self.psp[2](input).shape,self.psp[3](input).shape,self.psp[4](input).shape,self.psp[5](input).shape)
+        #input = torch.cat([self.psp[2](input),
+         #                      self.psp[3](input),
+          #                     self.psp[4](input),
+          #                     self.psp[5](input)],1)
+        input = self.psp[6](input)
         return input
+
+class Discriminator(nn.Module):
 
 
 class ResnetBlock(nn.Module):
