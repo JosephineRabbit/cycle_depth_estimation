@@ -3,10 +3,29 @@ import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
-
+from collections import OrderedDict
 ###############################################################################
 # Helper Functions
 ###############################################################################
+
+class PSPModule(nn.Module):
+    def __init__(self, features, out_features=1024, sizes=(1, 2, 3, 6)):
+        super().__init__()
+        self.stages = []
+        self.stages = nn.ModuleList([self._make_stage(features, size) for size in sizes])
+        self.bottleneck = nn.Conv2d(features * (len(sizes) + 1), out_features, kernel_size=1)
+        self.relu = nn.ReLU()
+
+    def _make_stage(self, features, size):
+        prior = nn.AdaptiveAvgPool2d(output_size=(size, size))
+        conv = nn.Conv2d(features, features, kernel_size=1, bias=False)
+        return nn.Sequential(prior, conv)
+
+    def forward(self, feats):
+        h, w = feats.size(2), feats.size(3)
+        priors = [F.upsample(input=stage(feats), size=(h, w), mode='bilinear') for stage in self.stages] + [feats]
+        bottle = self.bottleneck(torch.cat(priors, 1))
+        return self.relu(bottle)
 
 
 def get_norm_layer(norm_type='instance'):
@@ -69,7 +88,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 class G_1(nn.Module):
-    def __init__(self, input_nc, out_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False,n_blocks=6,padding_type = 'reflect'):
+    def __init__(self, input_nc, out_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False,n_blocks=3,padding_type = 'reflect'):
         assert(n_blocks>0)
         super(G_1, self).__init__()
         self.input_nc = input_nc
@@ -146,34 +165,56 @@ class _Transition(nn.Sequential):
         self.add_module('relu', nn.ReLU(inplace=True))
         self.add_module('conv', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False))
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
+class pspTransition(nn.Sequential):
+    def __init__(self, num_input_features, num_output_features):
+        super(pspTransition, self).__init__()
+        self.add_module('norm', nn.BatchNorm2d(num_input_features))
+        self.add_module('relu', nn.ReLU(inplace=True))
+        self.add_module('conv1', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False))
+        self.add_module('conv2', nn.Conv2d(num_input_features, num_output_features, kernel_size=2, stride=2,padding=2, bias=False))
+        self.add_module('conv2', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=2,dilation=1, bias=False))
+
 
 class Feature_net(nn.Module):
-    def __init__(self,input_nc,out_nc,growth_rate=32, block_config=(6, 12, 12, 12),
-                 num_init_features=64, bn_size=4, drop_rate=0):
+    def __init__(self,input_nc,mid_nc,out_nc,growth_rate=64, block_config=(6, 12, 12),
+                  bn_size=4, drop_rate=0):
         super(Feature_net, self).__init__()
-        self.features = []
 
         # Each denseblock
 
-        num_features = input_nc
+        num_init_features = input_nc
+        self.features = nn.Sequential(OrderedDict([
+
+            ('norm0', nn.BatchNorm2d(num_init_features)),
+
+
+        ]))
+
+        # Each denseblock
+        num_features = num_init_features
         for i, num_layers in enumerate(block_config):
             block = _DenseBlock(num_layers=num_layers, num_input_features=num_features,
                                 bn_size=bn_size, growth_rate=growth_rate, drop_rate=drop_rate)
-            self.features.add_module('centerblock%d' % (i + 1), block)
+            self.features.add_module('denseblock%d' % (i + 1), block)
             num_features = num_features + num_layers * growth_rate
             if i != len(block_config) - 1:
                 trans = _Transition(num_input_features=num_features, num_output_features=num_features // 2)
                 self.features.add_module('transition%d' % (i + 1), trans)
                 num_features = num_features // 2
+            if i == len(block_config) - 1:
+                trans = pspTransition(num_input_features=num_features, num_output_features=mid_nc)
+                self.features.add_module('transition%d' % (i + 1), trans)
+
 
         # Final batch norm
-        self.features.add_module('norm5', nn.BatchNorm2d(num_features))
-        self.features.add_module('padding5',nn.ReflectionPad2d(3))
-        self.features.add_module('conv5',nn.Conv2d(num_features, out_nc, kernel_size=7, padding=0))
-        self.features.add_module('relu5',nn.ReLU())
+        self.features.add_module('norm5', nn.BatchNorm2d(mid_nc))
 
 
-        def forward()
+    def forward(self,input):
+        for i, fe in enumerate(self.features):
+            input = fe.forward(input)
+            print(i,input.shape)
+        return input
 
 
 class ResnetBlock(nn.Module):
@@ -224,10 +265,13 @@ class ResnetBlock(nn.Module):
 if __name__ == '__main__':
     x = torch.Tensor(1, 3, 256, 256).cuda()
     G = G_1(input_nc=3,out_nc=128).cuda()
-    G2 = G_1(input_nc=3,out_nc=128).cuda()
+    G2 = G_1(input_nc=3, out_nc=128).cuda()
+    F = Feature_net(input_nc=128,mid_nc =1024,out_nc=128).cuda()
     y = G(x)
-    print(G._modules)
-    print(y.shape)
+    z = F(y)
+
+    print(F)
+    print(z.shape)
 
 
 
