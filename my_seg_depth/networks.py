@@ -217,21 +217,26 @@ class Feature_net(nn.Module):
 
 
     def forward(self,input):
+        features=[]
         for i, fe in enumerate(self.features):
             input = fe.forward(input)
             print(i,input.shape)
+            if i%2 ==0:
+                features.append(fe)
+
+
         input  = self.psp[0](input)
         input = self.psp[1](input)
         #input = self.psp
-        print(self.psp[2](input).shape,self.psp[3](input).shape,self.psp[4](input).shape,self.psp[5](input).shape)
-        #input = torch.cat([self.psp[2](input),
-         #                      self.psp[3](input),
-          #                     self.psp[4](input),
-          #                     self.psp[5](input)],1)
+        #print(self.psp[2](input).shape,self.psp[3](input).shape,self.psp[4](input).shape,self.psp[5](input).shape)
+        input = torch.cat([self.psp[2](input),
+                               self.psp[3](input),
+                               self.psp[4](input),
+                               self.psp[5](input)],1)
         input = self.psp[6](input)
         return input
 
-class Discriminator(nn.Module):
+#class Discriminator(nn.Module):
 
 
 class ResnetBlock(nn.Module):
