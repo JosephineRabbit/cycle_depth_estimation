@@ -4,6 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 from collections import OrderedDict
+import numpy as np
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -166,23 +167,31 @@ class _Transition(nn.Sequential):
         self.add_module('conv', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False))
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
+class DIS_Seg(nn.Module):
+    def __init__(self,input_nc,mid_nc,out_nc,growth_rate=64, block_config=(6, 12, 12),
+                  bn_size=4, drop_rate=0):
+        super(DIS_Seg, self).__init__()
 
-
+        num_features = input_nc
+        for i, num_layers in enumerate(block_config):
+            block = _DenseBlock(num_layers=num_layers, num_input_features=num_features,
+                                bn_size=bn_size, growth_rate=growth_rate, drop_rate=drop_rate)
+            self.features.add_module('denseblock%d' % (i + 1), block)
+            num_features = num_features + num_layers * growth_rate
+            if i != len(block_config) - 1:
+                trans = _Transition(num_input_features=num_features, num_output_features=num_features // 2)
+                self.features.add_module('transition%d' % (i + 1), trans)
+                num_features = num_features // 2
 
 class Feature_net(nn.Module):
-    def __init__(self,input_nc,mid_nc,out_nc,growth_rate=64, block_config=(6, 12, 12),
+    def __init__(self,input_nc,mid_nc,out_nc,growth_rate=64, block_config=(6, 8, 8),
                   bn_size=4, drop_rate=0):
         super(Feature_net, self).__init__()
 
         # Each denseblock
+        self.features = nn.Sequential(OrderedDict([]))
 
         num_init_features = input_nc
-        self.features = nn.Sequential(OrderedDict([
-
-            ('norm0', nn.BatchNorm2d(num_init_features)),
-
-
-        ]))
 
         # Each denseblock
         num_features = num_init_features
@@ -216,27 +225,68 @@ class Feature_net(nn.Module):
         self.psp.append(nn.BatchNorm2d(mid_nc).cuda())
 
 
+
+        self.Up = nn.ModuleList()
+        self.Up.append(nn.ConvTranspose2d(1024,512,2,2))
+        self.Up.append(nn.ConvTranspose2d(512,256,2,2))
+        self.Up.append(nn.ConvTranspose2d(256,256,2,2))
+        self.out_put = [
+
+            nn.Conv2d(input_nc, output_nc, kernel_size=1, padding=0, bias=use_bias),
+            nn.Sigmoid()
+        ]
+
+
     def forward(self,input):
         features=[]
         for i, fe in enumerate(self.features):
             input = fe.forward(input)
             print(i,input.shape)
             if i%2 ==0:
-                features.append(fe)
+                features.append(input)
 
 
         input  = self.psp[0](input)
         input = self.psp[1](input)
-        #input = self.psp
-        #print(self.psp[2](input).shape,self.psp[3](input).shape,self.psp[4](input).shape,self.psp[5](input).shape)
+
         input = torch.cat([self.psp[2](input),
                                self.psp[3](input),
                                self.psp[4](input),
                                self.psp[5](input)],1)
         input = self.psp[6](input)
+
+        for i in range(len(features)):
+            j = len(features)-i-1
+            features[j] =self.trans[i](features[j])
+            print(i,input.shape,features[j].shape)
+            input = self.Up[i](torch.cat([input,features[j]],1))
+
         return input
 
-#class Discriminator(nn.Module):
+
+class Discriminator(nn.Module):
+    def __init__(self, image_size=64 ,conv_dim=128, repeat_num=4):
+        super(Discriminator, self).__init__()
+        layers = []
+        curr_dim = conv_dim
+        for i in range(1, repeat_num):
+            layers.append(nn.Conv2d(curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1))
+            layers.append(nn.LeakyReLU(0.01))
+            layers.append(nn.Dropout2d(0.2))
+            curr_dim = curr_dim * 2
+
+        kernel_size = int(image_size / np.power(2, repeat_num-1))
+        self.main = nn.Sequential(*layers)
+        self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=kernel_size, stride=kernel_size, padding=0, bias=False)
+
+    def forward(self, input):
+
+        h = self.main(input)
+
+        out_src = self.conv1(h)
+
+        return out_src.squeeze(1).squeeze(1)
+
 
 
 class ResnetBlock(nn.Module):
@@ -284,16 +334,21 @@ class ResnetBlock(nn.Module):
 
 
 
+
 if __name__ == '__main__':
-    x = torch.Tensor(1, 3, 256, 256).cuda()
+    x = torch.Tensor(5, 3, 256, 256).cuda()
     G = G_1(input_nc=3,out_nc=128).cuda()
     G2 = G_1(input_nc=3, out_nc=128).cuda()
+    D = Discriminator().cuda()
+
+
     F = Feature_net(input_nc=128,mid_nc =1024,out_nc=128).cuda()
     y = G(x)
-    z = F(y)
+    dis = D(y)
+#    z = F(y)
 
     print(F)
-    print(z.shape)
+    print(dis.shape)
 
 
 
