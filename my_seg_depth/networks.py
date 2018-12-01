@@ -167,25 +167,11 @@ class _Transition(nn.Sequential):
         self.add_module('conv', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False))
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
-class DIS_Seg(nn.Module):
-    def __init__(self,input_nc,mid_nc,out_nc,growth_rate=64, block_config=(6, 12, 12),
-                  bn_size=4, drop_rate=0):
-        super(DIS_Seg, self).__init__()
 
-        num_features = input_nc
-        for i, num_layers in enumerate(block_config):
-            block = _DenseBlock(num_layers=num_layers, num_input_features=num_features,
-                                bn_size=bn_size, growth_rate=growth_rate, drop_rate=drop_rate)
-            self.features.add_module('denseblock%d' % (i + 1), block)
-            num_features = num_features + num_layers * growth_rate
-            if i != len(block_config) - 1:
-                trans = _Transition(num_input_features=num_features, num_output_features=num_features // 2)
-                self.features.add_module('transition%d' % (i + 1), trans)
-                num_features = num_features // 2
 
 class Feature_net(nn.Module):
-    def __init__(self,input_nc,mid_nc,out_nc,growth_rate=64, block_config=(6, 8, 8),
-                  bn_size=4, drop_rate=0):
+    def __init__(self,input_nc,mid_nc,out_nc,growth_rate=48, block_config=(6, 8, 8),
+                  bn_size=4, drop_rate=0,cls=33):
         super(Feature_net, self).__init__()
 
         # Each denseblock
@@ -224,17 +210,32 @@ class Feature_net(nn.Module):
         # Final batch norm
         self.psp.append(nn.BatchNorm2d(mid_nc).cuda())
 
+        self.trans  = nn.ModuleList()
+
+        self.trans.append(nn.Conv2d(680, 256,1,1))
+        self.trans.append(nn.Conv2d(592, 256, 1, 1))
+        self.trans.append(nn.Conv2d(416, 128, 1, 1))
+
 
 
         self.Up = nn.ModuleList()
-        self.Up.append(nn.ConvTranspose2d(1024,512,2,2))
-        self.Up.append(nn.ConvTranspose2d(512,256,2,2))
-        self.Up.append(nn.ConvTranspose2d(256,256,2,2))
-        self.out_put = [
+        self.Up.append(nn.ConvTranspose2d(1024+256,512,2,2))
+        self.Up.append(nn.ConvTranspose2d(512+256,256,2,2))
+        self.Up.append(nn.ConvTranspose2d(256+128,256,2,2))
+        self.Up.append(nn.ConvTranspose2d(256 + 128,cls, 2, 2))
+        self.activation_seg = nn.Tanh()
+        self.trans2 = nn.ModuleList()
 
-            nn.Conv2d(input_nc, output_nc, kernel_size=1, padding=0, bias=use_bias),
-            nn.Sigmoid()
-        ]
+        self.trans2.append(nn.Conv2d(680, 256, 1, 1))
+        self.trans2.append(nn.Conv2d(592, 256, 1, 1))
+        self.trans2.append(nn.Conv2d(416, 128, 1, 1))
+
+        self.Up2 = nn.ModuleList()
+        self.Up2.append(nn.ConvTranspose2d(1024 + 256, 512, 2, 2))
+        self.Up2.append(nn.ConvTranspose2d(512 + 256, 256, 2, 2))
+        self.Up2.append(nn.ConvTranspose2d(256 + 128, 256, 2, 2))
+        self.Up2.append(nn.ConvTranspose2d(256 + 128, 1, 2, 2))
+        self.activation_dep = nn.LeakyReLU()
 
 
     def forward(self,input):
@@ -253,13 +254,14 @@ class Feature_net(nn.Module):
                                self.psp[3](input),
                                self.psp[4](input),
                                self.psp[5](input)],1)
-        input = self.psp[6](input)
+        Y = []
+        Y.append(self.psp[6](input))
 
         for i in range(len(features)):
             j = len(features)-i-1
             features[j] =self.trans[i](features[j])
             print(i,input.shape,features[j].shape)
-            input = self.Up[i](torch.cat([input,features[j]],1))
+            Y.append(self.Up[i](torch.cat([Y[i],features[j]],1)))
 
         return input
 
@@ -345,10 +347,10 @@ if __name__ == '__main__':
     F = Feature_net(input_nc=128,mid_nc =1024,out_nc=128).cuda()
     y = G(x)
     dis = D(y)
-#    z = F(y)
+    z = F(y)
 
     print(F)
-    print(dis.shape)
+    print(dis.shape,z.shape)
 
 
 
