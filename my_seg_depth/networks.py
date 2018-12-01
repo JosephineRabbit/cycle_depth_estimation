@@ -222,7 +222,7 @@ class Feature_net(nn.Module):
         self.Up.append(nn.ConvTranspose2d(1024+256,512,2,2))
         self.Up.append(nn.ConvTranspose2d(512+256,256,2,2))
         self.Up.append(nn.ConvTranspose2d(256+128,256,2,2))
-        self.Up.append(nn.ConvTranspose2d(256 + 128,cls, 2, 2))
+        self.Up.append(nn.ConvTranspose2d(256 ,cls, 2, 2))
         self.activation_seg = nn.Tanh()
         self.trans2 = nn.ModuleList()
 
@@ -234,7 +234,7 @@ class Feature_net(nn.Module):
         self.Up2.append(nn.ConvTranspose2d(1024 + 256, 512, 2, 2))
         self.Up2.append(nn.ConvTranspose2d(512 + 256, 256, 2, 2))
         self.Up2.append(nn.ConvTranspose2d(256 + 128, 256, 2, 2))
-        self.Up2.append(nn.ConvTranspose2d(256 + 128, 1, 2, 2))
+        self.Up2.append(nn.ConvTranspose2d(256 , 1, 2, 2))
         self.activation_dep = nn.LeakyReLU()
 
 
@@ -254,16 +254,31 @@ class Feature_net(nn.Module):
                                self.psp[3](input),
                                self.psp[4](input),
                                self.psp[5](input)],1)
-        Y = []
-        Y.append(self.psp[6](input))
+        S = []
+        S.append(self.psp[6](input))
+        Dep = []
+        Dep.append(self.psp[6](input))
+        features_s =[]
+        features_d = []
+
 
         for i in range(len(features)):
             j = len(features)-i-1
-            features[j] =self.trans[i](features[j])
+            features_s.append(self.trans[i](features[j]))
             print(i,input.shape,features[j].shape)
-            Y.append(self.Up[i](torch.cat([Y[i],features[j]],1)))
+            S.append(self.Up[i](torch.cat([S[i],features_s[i]],1)))
+        S.append(self.Up[len(features)](S[len(features)]))
+        S[len(features) + 1] = self.activation_seg(S[len(features) + 1] )
 
-        return input
+        for i in range(len(features)):
+            j = len(features)-i-1
+            features_d.append(self.trans2[i](features[j]))
+            print(i,input.shape,features[j].shape)
+            Dep.append(self.Up2[i](torch.cat([S[i],features_d[i]],1)))
+        Dep.append(self.Up2[len(features)](Dep[len(features)]))
+        Dep[len(features) + 1] = self.activation_dep(Dep[len(features)+1])
+
+        return S[len(features)+1],Dep[len(features)+1]
 
 
 class Discriminator(nn.Module):
@@ -347,10 +362,10 @@ if __name__ == '__main__':
     F = Feature_net(input_nc=128,mid_nc =1024,out_nc=128).cuda()
     y = G(x)
     dis = D(y)
-    z = F(y)
+    z,d = F(y)
 
     print(F)
-    print(dis.shape,z.shape)
+    print(dis.shape,z.shape,d.shape)
 
 
 
