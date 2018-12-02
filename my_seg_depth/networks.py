@@ -169,6 +169,72 @@ class _Transition(nn.Sequential):
 
 
 
+
+class Discriminator(nn.Module):
+    def __init__(self, image_size=64 ,conv_dim=128, repeat_num=4):
+        super(Discriminator, self).__init__()
+        layers = []
+        curr_dim = conv_dim
+        for i in range(1, repeat_num):
+            layers.append(nn.Conv2d(curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1))
+            layers.append(nn.LeakyReLU(0.01))
+            layers.append(nn.Dropout2d(0.2))
+            curr_dim = curr_dim * 2
+
+        kernel_size = int(image_size / np.power(2, repeat_num-1))
+        self.main = nn.Sequential(*layers)
+        self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=kernel_size, stride=kernel_size, padding=0, bias=False)
+
+    def forward(self, input):
+
+        h = self.main(input)
+
+        out_src = self.conv1(h)
+
+        return out_src.squeeze(1).squeeze(1)
+
+
+
+class ResnetBlock(nn.Module):
+    def __init__(self,dim,padding_type,norm_layer,use_dropout,use_bias):
+        super(ResnetBlock, self).__init__()
+        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias)
+
+    def build_conv_block(self,dim,padding_type,norm_layer,use_dropout,use_bias):
+        conv_block = []
+        p = 0
+        if  padding_type =='reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type=='replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type =='zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented'%padding_type)
+
+        conv_block += [nn.Conv2d(dim,dim,kernel_size=3,padding=p,bias=use_bias),
+                       norm_layer(dim),
+                       nn.ReLU(True)]
+        if use_dropout:
+            conv_block += [nn.Dropout(0.5)]
+        p = 0
+        if  padding_type =='reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type=='replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type =='zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented'%padding_type)
+
+        conv_block += [nn.Conv2d(dim,dim,kernel_size=3,padding=p,bias=use_bias),
+                       norm_layer(dim)]
+
+        return nn.Sequential(*conv_block)
+
+    def forward(self,input):
+        out = input + self.conv_block(input)
+        return out
 class Feature_net(nn.Module):
     def __init__(self,input_nc,mid_nc,out_nc,growth_rate=48, block_config=(6, 8, 8),
                   bn_size=4, drop_rate=0,cls=33):
@@ -254,102 +320,74 @@ class Feature_net(nn.Module):
                                self.psp[3](input),
                                self.psp[4](input),
                                self.psp[5](input)],1)
+
+        input = (self.psp[6](input))
+
+        return  features,input
+
+
+class SEG(nn.Module):
+    def __init__(self,n_cls):
+        super(SEG, self).__init__()
+        self.trans = nn.ModuleList()
+
+        self.trans.append(nn.Conv2d(680, 256, 1, 1))
+        self.trans.append(nn.Conv2d(592, 256, 1, 1))
+        self.trans.append(nn.Conv2d(416, 128, 1, 1))
+
+        self.Up = nn.ModuleList()
+        self.Up.append(nn.ConvTranspose2d(1024 + 256, 512, 2, 2))
+        self.Up.append(nn.ConvTranspose2d(512 + 256, 256, 2, 2))
+        self.Up.append(nn.ConvTranspose2d(256 + 128, 256, 2, 2))
+        self.Up.append(nn.ConvTranspose2d(256, n_cls, 2, 2))
+        self.activation_seg = nn.Tanh()
+
+    def forward(self,features,input):
+        features_s = []
+
         S = []
-        S.append(self.psp[6](input))
-        Dep = []
-        Dep.append(self.psp[6](input))
-        features_s =[]
-        features_d = []
-
-
+        S.append(input)
         for i in range(len(features)):
-            j = len(features)-i-1
+            j = len(features) - i - 1
             features_s.append(self.trans[i](features[j]))
-            print(i,input.shape,features[j].shape)
-            S.append(self.Up[i](torch.cat([S[i],features_s[i]],1)))
+           # print(i, input.shape, features[j].shape)
+            S.append(self.Up[i](torch.cat([S[i], features_s[i]], 1)))
         S.append(self.Up[len(features)](S[len(features)]))
-        S[len(features) + 1] = self.activation_seg(S[len(features) + 1] )
+        S[len(features) + 1] = self.activation_seg(S[len(features) + 1])
 
+        return S[len(features)+1]
+
+
+class DEP(nn.Module):
+    def __init__(self, n_cls):
+        super(DEP, self).__init__()
+        self.trans = nn.ModuleList()
+
+        self.trans.append(nn.Conv2d(680, 256, 1, 1))
+        self.trans.append(nn.Conv2d(592, 256, 1, 1))
+        self.trans.append(nn.Conv2d(416, 128, 1, 1))
+
+        self.Up = nn.ModuleList()
+        self.Up.append(nn.ConvTranspose2d(1024 + 256, 512, 2, 2))
+        self.Up.append(nn.ConvTranspose2d(512 + 256, 256, 2, 2))
+        self.Up.append(nn.ConvTranspose2d(256 + 128, 256, 2, 2))
+        self.Up.append(nn.ConvTranspose2d(256, n_cls, 2, 2))
+        self.activation_seg = nn.LeakyReLU()
+
+    def forward(self, features, input):
+        features_s = []
+
+        S = []
+        S.append(input)
         for i in range(len(features)):
-            j = len(features)-i-1
-            features_d.append(self.trans2[i](features[j]))
-            print(i,input.shape,features[j].shape)
-            Dep.append(self.Up2[i](torch.cat([S[i],features_d[i]],1)))
-        Dep.append(self.Up2[len(features)](Dep[len(features)]))
-        Dep[len(features) + 1] = self.activation_dep(Dep[len(features)+1])
+            j = len(features) - i - 1
+            features_s.append(self.trans[i](features[j]))
+            print(i, input.shape, features[j].shape)
+            S.append(self.Up[i](torch.cat([S[i], features_s[i]], 1)))
+        S.append(self.Up[len(features)](S[len(features)]))
+        S[len(features) + 1] = self.activation_seg(S[len(features) + 1])
 
-        return S[len(features)+1],Dep[len(features)+1]
-
-
-class Discriminator(nn.Module):
-    def __init__(self, image_size=64 ,conv_dim=128, repeat_num=4):
-        super(Discriminator, self).__init__()
-        layers = []
-        curr_dim = conv_dim
-        for i in range(1, repeat_num):
-            layers.append(nn.Conv2d(curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1))
-            layers.append(nn.LeakyReLU(0.01))
-            layers.append(nn.Dropout2d(0.2))
-            curr_dim = curr_dim * 2
-
-        kernel_size = int(image_size / np.power(2, repeat_num-1))
-        self.main = nn.Sequential(*layers)
-        self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=kernel_size, stride=kernel_size, padding=0, bias=False)
-
-    def forward(self, input):
-
-        h = self.main(input)
-
-        out_src = self.conv1(h)
-
-        return out_src.squeeze(1).squeeze(1)
-
-
-
-class ResnetBlock(nn.Module):
-    def __init__(self,dim,padding_type,norm_layer,use_dropout,use_bias):
-        super(ResnetBlock, self).__init__()
-        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias)
-
-    def build_conv_block(self,dim,padding_type,norm_layer,use_dropout,use_bias):
-        conv_block = []
-        p = 0
-        if  padding_type =='reflect':
-            conv_block += [nn.ReflectionPad2d(1)]
-        elif padding_type=='replicate':
-            conv_block += [nn.ReplicationPad2d(1)]
-        elif padding_type =='zero':
-            p = 1
-        else:
-            raise NotImplementedError('padding [%s] is not implemented'%padding_type)
-
-        conv_block += [nn.Conv2d(dim,dim,kernel_size=3,padding=p,bias=use_bias),
-                       norm_layer(dim),
-                       nn.ReLU(True)]
-        if use_dropout:
-            conv_block += [nn.Dropout(0.5)]
-        p = 0
-        if  padding_type =='reflect':
-            conv_block += [nn.ReflectionPad2d(1)]
-        elif padding_type=='replicate':
-            conv_block += [nn.ReplicationPad2d(1)]
-        elif padding_type =='zero':
-            p = 1
-        else:
-            raise NotImplementedError('padding [%s] is not implemented'%padding_type)
-
-        conv_block += [nn.Conv2d(dim,dim,kernel_size=3,padding=p,bias=use_bias),
-                       norm_layer(dim)]
-
-        return nn.Sequential(*conv_block)
-
-    def forward(self,input):
-        out = input + self.conv_block(input)
-        return out
-
-
-
-
+        return S[len(features) + 1]
 
 
 if __name__ == '__main__':
@@ -362,10 +400,13 @@ if __name__ == '__main__':
     F = Feature_net(input_nc=128,mid_nc =1024,out_nc=128).cuda()
     y = G(x)
     dis = D(y)
-    z,d = F(y)
+    Features, Input = F(y)
+
+    SEg = SEG(n_cls=28).cuda()
+    z = SEg(Features,Input)
 
     print(F)
-    print(dis.shape,z.shape,d.shape)
+    print(dis.shape,z.shape)
 
 
 
