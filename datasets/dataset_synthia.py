@@ -24,7 +24,6 @@ def make_dataset(path_files):
         paths, size = make_dataset_txt(path_files)
     else:
         paths, size = make_dataset_dir(path_files)
-
     return paths, size
 
 def make_dataset_txt(path_files):
@@ -158,9 +157,9 @@ class CreateDataset(data.Dataset):
         img_target = img_target.resize([640, 192], Image.BILINEAR)
 
 
-        # depth_source_path=self.depth_source_paths[item % self.depth_source_size]
-        # depth_source = Image.open(depth_source_path)  # .convert('RGB')
-        # depth_source = depth_source.resize([640, 192], Image.BILINEAR)
+        depth_source_path=self.depth_source_paths[item % self.depth_source_size]
+        depth_source = Image.open(depth_source_path)  # .convert('RGB')
+        depth_source = depth_source.resize([640, 192], Image.BILINEAR)
 
         lab_source_path = self.lab_source_paths[item % self.lab_source_size]
         lab_target_path = self.lab_target_paths[index]
@@ -187,7 +186,7 @@ class CreateDataset(data.Dataset):
             img_source, lab_source, scale = paired_transform(self.opt, img_source, lab_source)
 
         img_source = self.transform_augment_normalize(img_source)
-        # depth_source = self.transform_augment_normalize(depth_source)
+        depth_source = self.transform_augment_normalize(depth_source)
         lab_source=self.mask2tensor(np.array(lab_source))
 
         target_dummy=lab_target
@@ -198,12 +197,14 @@ class CreateDataset(data.Dataset):
 
         lab_source=lab_source.unsqueeze(0)
         lab_target=lab_target.unsqueeze(0)
-        # depth_source=depth_source.unsqueeze(0)
+        depth_source=depth_source.unsqueeze(0)
         del target_dummy
         return {'img_source': img_source, 'img_target': img_target,
                 'lab_source': lab_source, 'lab_target': lab_target,
+                'dep_source': depth_source,
                 'img_source_paths': img_source_path, 'img_target_paths': img_target_path,
-                'lab_source_paths': lab_source_path, 'lab_target_paths': lab_target_path
+                'lab_source_paths': lab_source_path, 'lab_target_paths': lab_target_path,
+                'depth_source_path':depth_source_path
                 }
 
 
