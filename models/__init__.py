@@ -4,6 +4,7 @@ from models.cycle_gan_model import CycleGANModel
 from models.seg_model import SegModel
 from models.seg_cycle import SegCycle
 import sys
+import torch.nn as nn
 sys.path.append('models')
 def find_model_using_name(model_name):
     # Given the option --model [modelname],
@@ -51,6 +52,8 @@ def create_model_seg(opt):
 def create_model_segCycle(opt):
     print(opt.model)
     model=SegCycle()
+   # model = nn.DataParallel(model)
     model.initialize(opt)
+  #  model = nn.DataParallel(model)
     print("model [%s] was created." % (model.name()))
     return model
