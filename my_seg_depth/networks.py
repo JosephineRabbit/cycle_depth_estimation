@@ -28,7 +28,6 @@ class PSPModule(nn.Module):
         bottle = self.bottleneck(torch.cat(priors, 1))
         return self.relu(bottle)
 
-
 def get_norm_layer(norm_type='instance'):
     if norm_type == 'batch':
         norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
@@ -167,9 +166,6 @@ class _Transition(nn.Sequential):
         self.add_module('conv', nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False))
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
-
-
-
 class Discriminator(nn.Module):
     def __init__(self, image_size=64 ,conv_dim=128, repeat_num=4):
         super(Discriminator, self).__init__()
@@ -192,8 +188,6 @@ class Discriminator(nn.Module):
         out_src = self.conv1(h)
 
         return out_src.squeeze(1).squeeze(1)
-
-
 
 class ResnetBlock(nn.Module):
     def __init__(self,dim,padding_type,norm_layer,use_dropout,use_bias):
@@ -236,8 +230,8 @@ class ResnetBlock(nn.Module):
         out = input + self.conv_block(input)
         return out
 class Feature_net(nn.Module):
-    def __init__(self,input_nc,mid_nc,out_nc,growth_rate=48, block_config=(6, 8, 8),
-                  bn_size=4, drop_rate=0,cls=33):
+    def __init__(self,input_nc,mid_nc,growth_rate=48, block_config=(6, 8, 8),
+                  bn_size=4, drop_rate=0):
         super(Feature_net, self).__init__()
 
         # Each denseblock
@@ -276,32 +270,7 @@ class Feature_net(nn.Module):
         # Final batch norm
         self.psp.append(nn.BatchNorm2d(mid_nc).cuda())
 
-        self.trans  = nn.ModuleList()
 
-        self.trans.append(nn.Conv2d(680, 256,1,1))
-        self.trans.append(nn.Conv2d(592, 256, 1, 1))
-        self.trans.append(nn.Conv2d(416, 128, 1, 1))
-
-
-
-        self.Up = nn.ModuleList()
-        self.Up.append(nn.ConvTranspose2d(1024+256,512,2,2))
-        self.Up.append(nn.ConvTranspose2d(512+256,256,2,2))
-        self.Up.append(nn.ConvTranspose2d(256+128,256,2,2))
-        self.Up.append(nn.ConvTranspose2d(256 ,cls, 2, 2))
-        self.activation_seg = nn.Tanh()
-        self.trans2 = nn.ModuleList()
-
-        self.trans2.append(nn.Conv2d(680, 256, 1, 1))
-        self.trans2.append(nn.Conv2d(592, 256, 1, 1))
-        self.trans2.append(nn.Conv2d(416, 128, 1, 1))
-
-        self.Up2 = nn.ModuleList()
-        self.Up2.append(nn.ConvTranspose2d(1024 + 256, 512, 2, 2))
-        self.Up2.append(nn.ConvTranspose2d(512 + 256, 256, 2, 2))
-        self.Up2.append(nn.ConvTranspose2d(256 + 128, 256, 2, 2))
-        self.Up2.append(nn.ConvTranspose2d(256 , 1, 2, 2))
-        self.activation_dep = nn.LeakyReLU()
 
 
     def forward(self,input):
@@ -324,7 +293,6 @@ class Feature_net(nn.Module):
         input = (self.psp[6](input))
 
         return  features,input
-
 
 class SEG(nn.Module):
     def __init__(self,n_cls):
@@ -359,7 +327,7 @@ class SEG(nn.Module):
 
 
 class DEP(nn.Module):
-    def __init__(self, n_cls):
+    def __init__(self):
         super(DEP, self).__init__()
         self.trans = nn.ModuleList()
 
@@ -371,7 +339,7 @@ class DEP(nn.Module):
         self.Up.append(nn.ConvTranspose2d(1024 + 256, 512, 2, 2))
         self.Up.append(nn.ConvTranspose2d(512 + 256, 256, 2, 2))
         self.Up.append(nn.ConvTranspose2d(256 + 128, 256, 2, 2))
-        self.Up.append(nn.ConvTranspose2d(256, n_cls, 2, 2))
+        self.Up.append(nn.ConvTranspose2d(256, 1, 2, 2))
         self.activation_seg = nn.LeakyReLU()
 
     def forward(self, features, input):
@@ -390,6 +358,42 @@ class DEP(nn.Module):
         return S[len(features) + 1]
 
 
+
+
+def define_G(input_nc, output_nc, netG, norm='batch',
+             init_type='normal', init_gain=0.02, gpu_ids=[]):
+    net = None
+    norm_layer = get_norm_layer(norm_type=norm)
+
+    if netG == '6blocks':
+        net = G_1(input_nc, output_nc,  norm_layer=nn.BatchNorm2d,
+                  use_dropout=False,n_blocks=6,padding_type = 'reflect')
+    elif netG == '3blocks':
+        net = G_1(input_nc, output_nc, norm_layer=nn.BatchNorm2d,
+                  use_dropout=False,n_blocks=3,padding_type = 'reflect')
+    #elif netG == 'unet_128':
+     #   net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    #elif netG == 'unet_256':
+    #    net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    else:
+        raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
+
+    return init_net(net, init_type, init_gain, gpu_ids)
+
+def define_D(input_nc, ndf, netD, norm='batch',
+             use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+    net = None
+    norm_layer = get_norm_layer(norm_type=norm)
+
+    if netD == 'basic':
+        net = Discriminator(conv_dim=input_nc, image_size=ndf)
+    #elif netD == 'n_layers':
+    #    net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
+    #elif netD == 'pixel':
+    #    net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
+    else:
+        raise NotImplementedError('Discriminator model name [%s] is not recognized' % net)
+    return init_net(net, init_type, init_gain, gpu_ids)
 if __name__ == '__main__':
     x = torch.Tensor(5, 3, 256, 256).cuda()
     G = G_1(input_nc=3,out_nc=128).cuda()
@@ -407,13 +411,4 @@ if __name__ == '__main__':
 
     print(F)
     print(dis.shape,z.shape)
-
-
-
-
-
-
-
-
-
 
