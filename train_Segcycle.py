@@ -7,6 +7,7 @@ from util.visualizer import Visualizer
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 import torch
+
 if __name__ == '__main__':
     writer_train = SummaryWriter(log_dir='./summary/synthia_segCycle')
     writer_test = SummaryWriter(log_dir='./summary/synthia_segCycle')
@@ -50,15 +51,19 @@ if __name__ == '__main__':
             global_iter+=1
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
+
                 t_data = iter_start_time - iter_data_time
             visualizer.reset()
             total_steps += opt.batch_size
             epoch_iter += opt.batch_size
+
+
             model.set_input(data)
             model.optimize_parameters(train_or_test='train')
             if (global_iter % 50 == 0):
                 errors = model.get_current_losses()
                 for name, error in errors.items():
+                    print('------------------')
                     writer_train.add_scalar("{}train/{}".format(opt.name, name), error, global_iter)
                 images = model.get_current_visuals()
 
