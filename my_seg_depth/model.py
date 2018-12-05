@@ -205,28 +205,49 @@ class Seg_Depth(BaseModel):
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
         self.net_G_2 = networks.define_G(opt.input_nc, opt.output_nc,  opt.netG,
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
-
         self.net_Dis_en = networks.define_D()
-
         self.net_Feature = networks.Feature_net(input_nc=128,mid_nc =1024).cuda()
         self.net_Feature = nn.DataParallel(self.net_Feature)
-
         self.net_Seg_de = networks.SEG().cuda()
         self.net_Seg_de = nn.DataParallel(self.net_Seg_de)
-
         self.net_Dep_de = networks.DEP().cuda()
         self.net_Dep_de = nn.DataParallel(self.net_Dep_de)
 
-        if self.is_Train:
-            self.syn_imgpool - ImagePool(opt.poo_size)
-            self.real_imgpool = ImagePool(opt.pool_size)
 
-            self.criterionGAN = networks.GANLoss(use_lsgan =not opt.no_lsgan).to(self.device())
-            self.criterionSeg = torch.nn.CrossEntropyLoss(size_average=True, ignore_index=255).cuda()
-            self.criterionDep = torch.nn.L1loss()
+        self.syn_imgpool = ImagePool(opt.poo_size)
+        self.real_imgpool = ImagePool(opt.pool_size)
+
+        self.criterionGAN = networks.GANLoss(use_lsgan =not opt.no_lsgan).to(self.device())
+        self.criterionSeg = torch.nn.CrossEntropyLoss(size_average=True, ignore_index=255).cuda()
+        self.criterionDep = torch.nn.L1loss()
 
 
-        Seg_loss = self.criterionSeg(output[-1], gt.squeeze(1))
+
+    def set_input(self,input):
+        self.real_img = input['ims_real'].cuda()
+        self.syn_img = input['img_syn'].cuda()
+        self.real_seg_l = input['seg_l_real'].cuda()
+        self.syn_seg_l = input['seg_l_syn'].cuda()
+        self.syn_dep_l = input['dep_l_syn'].cuda()
+
+    def forward(self):
+        self.syn_features1 = self.net_G_1(self.syn_img)
+        self.real_features1 = self.net_G_2(self.real_img)
+
+        #return self.syn_features1,self.real_features1
+
+    def forward_features2(self,features1):
+        self.features2 = self.net_Feature(features1)
+        return self.features2
+
+    def forward_seg(self):
+        self.syn_seg_pre = self.net_Seg_de()
+
+
+
+
+
+    Seg_loss = self.criterionSeg(output[-1], gt.squeeze(1))
 
 
 
