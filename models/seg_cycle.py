@@ -154,6 +154,7 @@ class SegCycle(BaseModel):
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B+\
             self.loss_segAfake+self.loss_segAreal+self.loss_segBfake+self.loss_segBreal
         return self.loss_G
+
     def optimize_parameters(self,train_or_test):
 
         # forward
