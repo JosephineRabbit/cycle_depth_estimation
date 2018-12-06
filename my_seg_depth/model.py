@@ -176,6 +176,8 @@ class BaseModel():
                     param.requires_grad = requires_grad
 
 
+
+
 class Seg_Depth(BaseModel):
 
     def name(self):
@@ -213,15 +215,26 @@ class Seg_Depth(BaseModel):
         self.net_Dep_de = networks.DEP().cuda()
         self.net_Dep_de = nn.DataParallel(self.net_Dep_de)
 
+        self.optimizer_G_1 = torch.optim.Adam(self.net_G_1.parameters(),
+                                            lr=opt.lr, betas=(opt.beta1, 0.999))
+        self.optimizer_G_2 = torch.optim.Adam(self.net_G_2.parameters(),
+                                              lr=opt.lr,betas=(opt.beta1,0.999))
+        self.optimizer_F = torch.optim.Adam(self.net_Feature.parameters(),
+                                            lr=opt.lr,betas=(opt.beta1,0.999))
+        self.optimizer_Seg = torch.optim.Adam(self.net_Seg_de.parameters(),
+                                              lr=opt.lr,betas=(opt.beta1,0.999))
+        self.optimizer_Dep = torch.optim.Adam(self.net_Dep_de.parameters(),
+                                              lr=opt.lr, betas=(opt.beta1, 0.999))
+        self.optimizer_D = torch.optim.Adam(itertools.chain(self.net_Dis_en.parameters()),
+                                            lr=opt.lr, betas=(opt.beta1, 0.999))
+
 
         self.syn_imgpool = ImagePool(opt.poo_size)
         self.real_imgpool = ImagePool(opt.pool_size)
 
         self.criterionGAN = networks.GANLoss(use_lsgan =not opt.no_lsgan).to(self.device())
         self.criterionSeg = torch.nn.CrossEntropyLoss(size_average=True, ignore_index=255).cuda()
-        self.criterionDep = torch.nn.L1loss()
-
-
+        self.criterionDep = torch.nn.functional.l1_loss()
 
     def set_input(self,input):
         self.real_img = input['ims_real'].cuda()
@@ -234,8 +247,6 @@ class Seg_Depth(BaseModel):
         self.syn_features1 = self.net_G_1(self.syn_img)
         self.real_features1 = self.net_G_2(self.real_img)
 
-        #return self.syn_features1,self.real_features1
-
     def forward_features2(self,features1):
         self.features2 = self.net_Feature(features1)
         return self.features2
@@ -243,13 +254,112 @@ class Seg_Depth(BaseModel):
     def forward_seg(self):
         self.syn_seg_pre = self.net_Seg_de()
 
+    def backward_D(self):
+        pre_s = self.net_Dis_en(self.syn_features1)
+        self.loss_D_syn = self.criterionGAN(pre_s,False)
+        pre_r = self.net_Dis_en(self.real_features1)
+        self.loss_D_real = self.criterionGAN(pre_r,True)
+        return self.loss_D_syn,self.loss_D_real
+
+    def backward_Seg(self):
+        syn_f2,syn_inf = self.net_Feature(self.syn_features1)
+        real_f2, real_inf = self.net_Feature(self.real_features1)
+        seg_syn_pre = self.net_Seg_de(syn_f2,syn_inf)
+        seg_real_pre = self.net_Seg_de(real_f2, real_inf)
+        self.loss_seg_syn = self.criterionSeg(seg_syn_pre,self.syn_seg_l)
+        self.loss_seg_real = self.criterionSeg(seg_real_pre,self.real_seg_l)
+
+        return self.loss_seg_real,self.loss_seg_real
+
+    def backward_Dep(self):
+        syn_f2, syn_inf = self.net_Feature(self.syn_features1)
+        dep_syn_pre = self.net_Dep_de(syn_f2,syn_inf)
+        self.loss_dep_syn =  self.criterionDep(dep_syn_pre,self.syn_dep_l)
+        return self.loss_dep_syn
+
+    def backward_G(self):
+        pre_s = self.net_Dis_en(self.syn_features1)
+        loss_G_syn = self.criterionGAN(pre_s, True)
+        pre_r = self.net_Dis_en(self.real_features1)
+        loss_G_real = self.criterionGAN(pre_r, False)
+        syn_f2, syn_inf = self.net_Feature(self.syn_features1)
+        real_f2, real_inf = self.net_Feature(self.real_features1)
+        seg_syn_pre = self.net_Seg_de(syn_f2, syn_inf)
+        seg_real_pre = self.net_Seg_de(real_f2, real_inf)
+        loss_seg_syn = self.criterionSeg(seg_syn_pre, self.syn_seg_l)
+        loss_seg_real = self.criterionSeg(seg_real_pre, self.real_seg_l)
+        self.loss_G_1 = loss_G_real+loss_seg_real
+        self.loss_G_2 = loss_G_syn+loss_seg_syn
+
+        return self.loss_G_1,self.loss_G_2
+
+    def optimize_parameters(self,train_or_test):
+
+        self.set_requires_grad(self.net_Dis_en, False)
+        self.set_requires_grad([self.net_G_1, self.net_G_2,
+                                self.net_Seg_de, self.net_Feature, self.net_Dep_de], False)
+        if (train_or_test=='train'):
+            self.set_requires_grad(self.net_Dis_en,False)
+            self.set_requires_grad([self.net_G_1,self.net_G_2,
+                                    self.net_Seg_de,self.net_Feature,self.net_Dep_de],True)
+
+        self.forward()
+        self.optimizer_G_1.zero_grad()
+        self.optimizer_G_2.zero_grad()
+        self.loss_G1,self.loss_G2 =self.backward_G()
+        if (train_or_test=='trian'):
+            self.loss_G1.backward()
+            self.loss_G2.backward()
+            self.optimizer_G_1.step()
+            self.optimizer_G_2.step()
+
+        self.optimizer_F.zero_grad()
+        self.loss_s = self.backward_Seg()
+        self.loss_d = self.backward_Dep()
+        self.loss_ff = self.loss_s+self.loss_d
+        self.loss_ff.backward()
+        self.optimizer_F.step()
+
+        self.optimizer_Seg.zero_grad()
+        self.loss_s = self.backward_Seg()
+        self.loss_s.backward()
+        self.optimizer_Seg.step()
+
+        self.optimizer_Dep.zero_grad()
+        self.loss_d = self.backward_Dep()
+        self.loss_d.backward()
+        self.optimizer_Dep.step()
+
+        if(train_or_test=='train'):
+            self.set_requires_grad(self.net_Dis_en, True)
+            self.set_requires_grad([self.net_G_1, self.net_G_2,
+                                    self.net_Seg_de, self.net_Feature, self.net_Dep_de], False)
+
+            self.optimizer_D.zero_grad()
+            self.loss_D = self.backward_D()
+            self.loss_D.backward()
+            self.optimizer_D.step()
 
 
 
 
-    Seg_loss = self.criterionSeg(output[-1], gt.squeeze(1))
 
 
 
 
 
+
+
+
+
+
+
+
+
+
+def create_model_segdepth(opt):
+    print(opt.model)
+    model = Seg_Depth()
+    model.initialize(opt)
+    print("model [%s] was created." % (model.name()))
+    return model
