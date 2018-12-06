@@ -259,7 +259,7 @@ class Seg_Depth(BaseModel):
         self.loss_D_syn = self.criterionGAN(pre_s,False)
         pre_r = self.net_Dis_en(self.real_features1)
         self.loss_D_real = self.criterionGAN(pre_r,True)
-        return self.loss_D_syn,self.loss_D_real
+        return self.loss_D_syn+self.loss_D_real
 
     def backward_Seg(self):
         syn_f2,syn_inf = self.net_Feature(self.syn_features1)
@@ -269,7 +269,7 @@ class Seg_Depth(BaseModel):
         self.loss_seg_syn = self.criterionSeg(seg_syn_pre,self.syn_seg_l)
         self.loss_seg_real = self.criterionSeg(seg_real_pre,self.real_seg_l)
 
-        return self.loss_seg_real,self.loss_seg_real
+        return self.loss_seg_real+self.loss_seg_syn
 
     def backward_Dep(self):
         syn_f2, syn_inf = self.net_Feature(self.syn_features1)
