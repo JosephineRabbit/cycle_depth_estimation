@@ -358,8 +358,6 @@ class DEP(nn.Module):
         return S[len(features) + 1]
 
 
-
-
 def define_G(input_nc, output_nc, netG, norm='batch',
              init_type='normal', init_gain=0.02, gpu_ids=[]):
     net = None
@@ -394,6 +392,27 @@ def define_D(input_nc, ndf, netD, norm='batch',
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % net)
     return init_net(net, init_type, init_gain, gpu_ids)
+class GANLoss(nn.Module):
+    def __init__(self, use_lsgan=True, target_real_label=1.0, target_fake_label=0.0):
+        super(GANLoss, self).__init__()
+        self.register_buffer('real_label', torch.tensor(target_real_label))
+        self.register_buffer('fake_label', torch.tensor(target_fake_label))
+        if use_lsgan:
+            self.loss = nn.MSELoss()
+        else:
+            self.loss = nn.BCELoss()
+
+    def get_target_tensor(self, input, target_is_real):
+        if target_is_real:
+            target_tensor = self.real_label
+        else:
+            target_tensor = self.fake_label
+        return target_tensor.expand_as(input)
+
+    def __call__(self, input, target_is_real):
+        target_tensor = self.get_target_tensor(input, target_is_real)
+        return self.loss(input, target_tensor)
+
 if __name__ == '__main__':
     x = torch.Tensor(5, 3, 256, 256).cuda()
     G = G_1(input_nc=3,out_nc=128).cuda()
