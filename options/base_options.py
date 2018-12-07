@@ -12,7 +12,7 @@ class BaseOptions():
 
     def initialize(self, parser):
         parser.add_argument('--dataroot', required=False,default='/home/dut-ai/Documents/temp/synthia',help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
-        parser.add_argument('--batch_size', type=int, default=1, help='input batch size')
+        parser.add_argument('--batch_size', type=int, default=10, help='input batch size')
         parser.add_argument('--loadSize', type=int, default=286, help='scale images to this size')
         parser.add_argument('--fineSize', type=int, default=256, help='then crop to this size')
         parser.add_argument('--display_winsize', type=int, default=256, help='display window size for both visdom and HTML')
@@ -21,9 +21,9 @@ class BaseOptions():
         parser.add_argument('--ngf', type=int, default=64, help='# of gen filters in first conv layer')
         parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
         parser.add_argument('--netD', type=str, default='basic', help='selects model to use for netD')
-        parser.add_argument('--netG', type=str, default='resnet_9blocks', help='selects model to use for netG')
+        parser.add_argument('--netG', type=str, default='3blocks', help='selects model to use for netG')
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if netD==n_layers')
-        parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
+     #   parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
         parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | aligned | single]')
         parser.add_argument('--model', type=str, default='cycle_gan',
@@ -50,6 +50,10 @@ class BaseOptions():
                                  help='training label for source domain')
         parser.add_argument('--lab_target_file_train', type=str, default='/home/dut-ai/Documents/temp/cityscape/Cityscape/gtFine_trainvaltest/gtFine/label_train',
                                  help='training label for target domain')
+        parser.add_argument('--depth_source_file_train', type=str, default='/home/dut-ai/Documents/temp/synthia/train/depth_train',
+                            help='training depth label for syn domain')
+        parser.add_argument('--depth_source_file_test', type=str, default='/home/dut-ai/Documents/temp/synthia/test/depth_test',
+                            help='testing depth label for syn domain')
 
         parser.add_argument('--img_source_file_test', type=str, default='/home/dut-ai/Documents/temp/synthia/test/RGB',
                                  help='training and testing dataset for source domain')
@@ -110,8 +114,8 @@ class BaseOptions():
     def parse(self):
 
         opt = self.gather_options()
-        opt.name = 'app2orange_cycle'
-        opt.model = 'cycle_gan'
+        opt.name = 'new_seg2dep'
+        opt.model = 'S2D'
         opt.isTrain = self.isTrain   # train or test
 
         # process opt.suffix
@@ -122,14 +126,15 @@ class BaseOptions():
         self.print_options(opt)
 
         # set gpu ids
-        str_ids = opt.gpu_ids.split(',')
-        opt.gpu_ids = []
-        for str_id in str_ids:
-            id = int(str_id)
-            if id >= 0:
-                opt.gpu_ids.append(id)
-        if len(opt.gpu_ids) > 0:
-            torch.cuda.set_device(opt.gpu_ids[0])
+#        str_ids = opt.gpu_ids.split(',')
+  #      opt.gpu_ids = []
+  #      for str_id in str_ids:
+   #         id = int(str_id)
+   #         if id >= 0:
+   #             opt.gpu_ids.append(id)
+   #     if len(opt.gpu_ids) > 0:
+   #         torch.cuda.set_device(opt.gpu_ids[0])
 
         self.opt = opt
         return self.opt
+
