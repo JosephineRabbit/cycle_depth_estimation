@@ -92,13 +92,15 @@ class BaseModel():
                 if isinstance(value, list):
                     visual_data=value[-1].data
                 else:
-                    visual_data=value.data
-                segname_syn=['lab_s','lab_s_pre','lab_A','segAreal','segAfake']
-                segname_real=['lab_t','lab_t_pre','lab_B','segBreal','segBfake']
+                  visual_data=value.data
+                segname_syn=['syn_seg_l',
+                             'syn_seg_pre']
+                segname_real=['real_seg_l',
+                             'real_seg_pre']
                 if (name in segname_syn):
-                    visual_ret[name]=util.label2im(visual_data,syn_or_real='syn')
+                    visual_ret[name]=util.label2im(visual_data)
                 elif (name in segname_real):
-                    visual_ret[name]=util.label2im(visual_data,syn_or_real='real')
+                    visual_ret[name]=util.label2im(visual_data)
                 else:
                     visual_ret[name] = util.tensor2im(visual_data)
         return visual_ret
@@ -120,11 +122,9 @@ class BaseModel():
                 save_path = os.path.join(self.save_dir, save_filename)
                 net = getattr(self, 'net_' + name)
 
-                if len(self.gpu_ids) > 0 and torch.cuda.is_available():
-                    torch.save(net.state_dict(), save_path)
-                    net.cuda(self.gpu_ids[0])
-                else:
-                    torch.save(net.state_dict(), save_path)
+
+                
+                torch.save(net.state_dict(), save_path)
 
     def __patch_instance_norm_state_dict(self, state_dict, module, keys, i=0):
         key = keys[i]
@@ -228,19 +228,19 @@ class Seg_Depth(BaseModel):
 
         self.loss_names=['G1_dis','G1_seg','D_G1',
                          'G2_dis','G2_seg','D_G2',
-                         'Fnet_seg_s','Fnet_seg_r','Fnet_dep'
-                         'DE_seg_s','DE_seg_r','DE_dep']
+                         'seg_syn','seg_real','dep_syn'
+                         ]
 
-        self.visual_names = ['syn_img','real_img','syn_seg_lable','real_seg_label'
-                             'syn_seg_pre','real_seg_pre'
-                             'syn_dep_label','syn_dep_pre']
+        self.visual_names = ['syn_img','real_img','syn_seg_l','real_seg_l',
+                             'syn_seg_pre','real_seg_pre',
+                             'syn_dep_l','syn_dep_pre']
 
         if self.is_Train:
             self.model_names = ['G_1', 'G_2', 'Dis_en',
                                 'Feature','Seg_de','Dep_de'
                                 ]
         else:  # during test time, only load Gs
-            self.model_names = ['G_1', 'G_2'
+            self.model_names = ['G_1', 'G_2',
                                 'Feature','Seg_de','Dep_de']
 
         self.net_G_1 = networks.define_G(opt.input_nc, opt.output_nc,  opt.netG, opt.init_type, opt.init_gain)
@@ -252,8 +252,8 @@ class Seg_Depth(BaseModel):
 
         self.net_Seg_de = init_net(networks.SEG(n_cls=28))
 
-        self.net_Dep_de = networks.DEP().cuda()
-        self.net_Dep_de = nn.DataParallel(self.net_Dep_de)
+        self.net_Dep_de = init_net(networks.DEP())
+
 
         self.optimizer_G_1 = torch.optim.Adam(self.net_G_1.parameters(),
                                             lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -266,7 +266,7 @@ class Seg_Depth(BaseModel):
         self.optimizer_Dep = torch.optim.Adam(self.net_Dep_de.parameters(),
                                               lr=opt.lr, betas=(opt.beta1, 0.999))
         self.optimizer_D = torch.optim.Adam(itertools.chain(self.net_Dis_en.parameters()),
-                                            lr=opt.lr, betas=(opt.beta1, 0.999))
+                                            lr=opt.lr_D, betas=(opt.beta1, 0.999))
 
 
         self.syn_imgpool = ImagePool(opt.pool_size)
@@ -296,10 +296,10 @@ class Seg_Depth(BaseModel):
 
     def backward_D(self):
         pre_s = self.net_Dis_en(self.syn_features1.detach())
-        self.loss_D_syn = self.criterionGAN(pre_s,False)
+        self.loss_D_G1 = self.criterionGAN(pre_s,False)
         pre_r = self.net_Dis_en(self.real_features1.detach())
-        self.loss_D_real = self.criterionGAN(pre_r,True)
-        return self.loss_D_syn+self.loss_D_real
+        self.loss_D_G2 = self.criterionGAN(pre_r,True)
+        return self.loss_D_G1+self.loss_D_G2
 
     def detach_list(self,list):
         for i in list:
@@ -309,37 +309,37 @@ class Seg_Depth(BaseModel):
     def backward_Seg(self):
         syn_f2,syn_inf = self.net_Feature(self.syn_features1.detach())
         real_f2, real_inf = self.net_Feature(self.real_features1.detach())
-        seg_syn_pre = self.net_Seg_de(self.detach_list(syn_f2),syn_inf.detach())
-        seg_real_pre = self.net_Seg_de(self.detach_list(real_f2), real_inf.detach())
+        self.syn_seg_pre = self.net_Seg_de(self.detach_list(syn_f2),syn_inf.detach())
+        self.real_seg_pre = self.net_Seg_de(self.detach_list(real_f2), real_inf.detach())
 
-        self.loss_seg_syn = self.criterionSeg(seg_syn_pre,self.syn_seg_l)
-        self.loss_seg_real = self.criterionSeg(seg_real_pre,self.real_seg_l)
+        self.loss_seg_syn = self.criterionSeg(self.syn_seg_pre,self.syn_seg_l)
+        self.loss_seg_real = self.criterionSeg(self.real_seg_pre,self.real_seg_l)
 
         return self.loss_seg_real+self.loss_seg_syn
 
     def backward_Dep(self):
         syn_f2, syn_inf = self.net_Feature(self.syn_features1.detach())
-        dep_syn_pre = self.net_Dep_de(self.detach_list(syn_f2),syn_inf.detach())
-        self.loss_dep_syn =  self.criterionDep(dep_syn_pre,self.syn_dep_l)
+        self.syn_dep_pre = self.net_Dep_de(self.detach_list(syn_f2),syn_inf.detach())
+        self.loss_dep_syn =  self.criterionDep(self.syn_dep_pre,self.syn_dep_l)
         return self.loss_dep_syn
 
     def backward_G(self):
         #print(self.syn_features1.shape)
         pre_s = self.net_Dis_en(self.syn_features1)
-        loss_G_syn = self.criterionGAN(pre_s, True)
+        self.loss_G1_dis = self.criterionGAN(pre_s, True)
         pre_r = self.net_Dis_en(self.real_features1)
-        loss_G_real = self.criterionGAN(pre_r, False)
+        self.loss_G2_dis = self.criterionGAN(pre_r, False)
         syn_f2, syn_inf = self.net_Feature(self.syn_features1)
         real_f2, real_inf = self.net_Feature(self.real_features1)
         seg_syn_pre = self.net_Seg_de(syn_f2, syn_inf)
         seg_real_pre = self.net_Seg_de(real_f2, real_inf)
         #print(seg_real_pre.shape,self.real_seg_l.shape)
-        loss_seg_syn = self.criterionSeg(seg_syn_pre, self.syn_seg_l)
-        loss_seg_real = self.criterionSeg(seg_real_pre, self.real_seg_l)
-        self.loss_G_1 = loss_G_real+loss_seg_real
-        self.loss_G_2 = loss_G_syn+loss_seg_syn
+        self.loss_G1_seg = self.criterionSeg(seg_syn_pre, self.syn_seg_l)
+        self.loss_G2_seg = self.criterionSeg(seg_real_pre, self.real_seg_l)
+       # self.loss_G_1 = self.+loss_seg_real
+       # self.loss_G_2 = loss_G_syn+loss_seg_syn
 
-        return self.loss_G_1,self.loss_G_2
+        return self.loss_G1_dis+self.loss_G1_seg,self.loss_G2_dis+self.loss_G2_seg
 
     def optimize_parameters(self,train_or_test):
 
@@ -356,11 +356,11 @@ class Seg_Depth(BaseModel):
         self.optimizer_G_1.zero_grad()
         self.optimizer_G_2.zero_grad()
         self.loss_G1,self.loss_G2 =self.backward_G()
-        self.loss_G1.backward()
-        self.loss_G2.backward()
 
         if (train_or_test == 'train'):
             print('g_update')
+            self.loss_G1.backward()
+            self.loss_G2.backward()
 
             self.optimizer_G_1.step()
             self.optimizer_G_2.step()
@@ -368,27 +368,29 @@ class Seg_Depth(BaseModel):
         self.optimizer_F.zero_grad()
         self.loss_s = self.backward_Seg()
         self.loss_d = self.backward_Dep()
-        self.loss_ff = self.loss_s+self.loss_d
-        self.loss_ff.backward()
+        self.loss_ff = 5*self.loss_s+self.loss_d
+
 
         if (train_or_test == 'train'):
             print('F udate')
-
+            self.loss_ff.backward()
             self.optimizer_F.step()
         #self.forward()
         self.optimizer_Seg.zero_grad()
         self.loss_s = self.backward_Seg()
-        self.loss_s.backward()
+
 
         if (train_or_test == 'train'):
+            self.loss_s.backward()
             print('seg update')
 
             self.optimizer_Seg.step()
         #self.forward()
         self.optimizer_Dep.zero_grad()
         self.loss_d = self.backward_Dep()
-        self.loss_d.backward()
+
         if (train_or_test == 'train'):
+            self.loss_d.backward()
             print('dep update')
 
 
@@ -428,12 +430,6 @@ if __name__ == '__main__':
 
     dataset_test = dataloader(opt, train_or_test='test')
     model =create_model_segdepth(opt)
-    #G_syn = G_1(input_nc=3, out_nc=128).cuda()
-    #G_real = G_1(input_nc=3, out_nc=128).cuda()
-    #Dis = Discriminator().cuda()
-    #F = Feature_net().cuda()
-    #Seg_net = SEG().cuda()
-    #Dep_net = DEP().cuda()
     visualizer = Visualizer(opt)
     total_steps = 0
     global_iter=0
@@ -481,7 +477,9 @@ if __name__ == '__main__':
                 images = model.get_current_visuals()
 
                 for name, img in images.items():
+                    print(name,img.shape)
                     img = img / img.max()
+                   # if len(img.shape)==3:
                     img = torch.from_numpy(img.transpose([2, 0, 1]))
                     writer_train.add_image("{}train/img_{}".format(opt.name, name), img, global_iter)
             if total_steps % opt.save_latest_freq == 0:
@@ -498,7 +496,7 @@ if __name__ == '__main__':
 
         print('End of epoch %d / %d \t Time Taken: %d sec' %
               (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))
-        #model.update_learning_rate()
+        model.update_learning_rate()
 
 
 
