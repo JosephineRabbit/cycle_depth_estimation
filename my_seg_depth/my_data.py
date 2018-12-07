@@ -67,9 +67,9 @@ class CreateDataset(data.Dataset):
         self.transform_no_augment_normalize = get_transform(opt, False, normalize=True)
 
         self.mask2tensor = MaskToTensor()
-        self.invalid_synthia = [0]
+        self.invalid_synthia = [0, 1, 2, 3, 4, 5]
         self.invalid_cityscape = [0, 1, 2, 3, 4, 5]
-        self.syn_id_to_trainid = {0: ignore_label,
+        self.syn_id_to_realid = {0: 0,
                                   1: 7,
                                   2: 8,
                                   3: 11,
@@ -90,8 +90,8 @@ class CreateDataset(data.Dataset):
                                   18: 32,
                                   19: 33,
                                   20: 7,
-                                  21: ignore_label,
-                                  22: ignore_label,
+                                  21: 0,
+                                  22: 0,
                                   }
         self.real_id_to_trainid = {-1: ignore_label, 0: ignore_label, 1: ignore_label, 2: ignore_label,
                                    3: ignore_label, 4: ignore_label, 5: ignore_label,
@@ -149,19 +149,21 @@ class CreateDataset(data.Dataset):
 
         lab_source = np.array(lab_source)
         lab_source_copy = lab_source.copy()
-        for k, v in self.syn_id_to_trainid.items():
+        for k, v in self.syn_id_to_realid.items():
             lab_source_copy[lab_source == k] = v
-        lab_source = Image.fromarray(lab_source_copy.astype(np.uint8))
+
 
         lab_target = np.array(lab_target)
         lab_target_copy = lab_target.copy()
         for k, v in self.real_id_to_trainid.items():
             lab_target_copy[lab_target == k] = v
+            lab_source_copy[lab_source_copy == k] = v
 
         lab_target = Image.fromarray(lab_target_copy.astype(np.uint8))
+        lab_source = Image.fromarray(lab_source_copy.astype(np.uint8))
 
         if (self.train_or_test == 'train'):
-            img_source, lab_source, scale = paired_transform(self.opt, img_source, lab_source)
+            img_source, lab_source,depth_source, scale = paired_transform_(self.opt, img_source, lab_source,depth_source)
 
         img_source = self.transform_augment_normalize(img_source)
         depth_source = self.transform_augment_normalize(depth_source)
@@ -177,9 +179,9 @@ class CreateDataset(data.Dataset):
         lab_target = lab_target.unsqueeze(0)
         depth_source = depth_source.unsqueeze(0)
         del target_dummy
-        return {'img_source': img_source, 'img_target': img_target,
-                'lab_source': lab_source, 'lab_target': lab_target,
-                'depth_source': depth_source,
+        return {'img_syn': img_source, 'img_real': img_target,
+                'seg_l_syn': lab_source, 'seg_l_real': lab_target,
+                'dep_l_syn': depth_source,
                 'img_source_paths': img_source_path, 'img_target_paths': img_target_path,
                 'lab_source_paths': lab_source_path, 'lab_target_paths': lab_target_path,
                 'depth_source_path': depth_source_path
@@ -208,7 +210,25 @@ def paired_transform(opt, image, seg):
             seg=F.rotate(seg, degree, Image.NEAREST)
 
     return image, seg, scale_rate
+def paired_transform_(opt, image, seg,dep):
+    scale_rate = 1.0
+    opt.flip=True
+    opt.rotation=True
+    if opt.flip:
+        n_flip = random.random()
+        if n_flip > 0.5:
+            image = F.hflip(image)
+            seg= F.hflip(seg)
+            dep = F.hflip(dep)
 
+    if opt.rotation:
+        n_rotation = random.random()
+        if n_rotation > 0.5:
+            degree = random.randrange(-500, 500)/100
+            image = F.rotate(image, degree, Image.BILINEAR)
+            seg=F.rotate(seg, degree, Image.NEAREST)
+            dep = F.rotate(dep,degree,Image.NEAREST)
+        return image, seg,dep, scale_rate
 
 def get_transform(opt, augment,normalize):
     transforms_list = []
@@ -229,7 +249,7 @@ def get_transform(opt, augment,normalize):
 def dataloader(opt,train_or_test):
     datasets = CreateDataset()
     datasets.initialize(opt,train_or_test)
-    dataset = data.DataLoader(datasets, batch_size=5, shuffle=True, num_workers=8)
+    dataset = data.DataLoader(datasets, batch_size=opt.batch_size, shuffle=True, num_workers=8)
     return dataset
 
 if __name__ == '__main__':
@@ -242,7 +262,6 @@ if __name__ == '__main__':
         img=data['lab_target'].data.numpy()
         print(img.shape)
         print(img.max())
-        #
-        #plt.imshow((np.squeeze(img)+1)/2)
+
         plt.imshow(np.squeeze(img[0,:,:,:]))
         plt.show()
