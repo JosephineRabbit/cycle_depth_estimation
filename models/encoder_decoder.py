@@ -79,6 +79,7 @@ class _InceptionBlock(nn.Module):
             output = F.dropout(output, p=self.drop_rate, training=self.training)
 
         return self.nonlinearity(output+x)
+
 class _DecoderUpBlock(nn.Module):
     def __init__(self, input_nc, middle_nc, output_nc, norm_layer=nn.BatchNorm2d, nonlinearity=nn.PReLU(), use_bias=False):
         super(_DecoderUpBlock, self).__init__()
@@ -97,6 +98,7 @@ class _DecoderUpBlock(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+
 class _OutputBlock(nn.Module):
     def __init__(self, input_nc, output_nc, kernel_size=3, use_bias=False):
         super(_OutputBlock, self).__init__()
