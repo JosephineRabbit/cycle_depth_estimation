@@ -111,12 +111,9 @@ class BaseModel():
                 save_filename = '%s_net_%s.pth' % (epoch, name)
                 save_path = os.path.join(self.save_dir, save_filename)
                 net = getattr(self, 'net_' + name)
+                print(name)
 
-                if len(self.gpu_ids) > 0 and torch.cuda.is_available():
-                    torch.save(net.state_dict(), save_path)
-                    net.cuda(self.gpu_ids[0])
-                else:
-                    torch.save(net.state_dict(), save_path)
+                torch.save(net.state_dict(), save_path)
 
     def __patch_instance_norm_state_dict(self, state_dict, module, keys, i=0):
         key = keys[i]
@@ -239,9 +236,10 @@ class Seg_Depth(BaseModel):
     def set_input(self,input):
         self.real_img = input['ims_real'].cuda()
         self.syn_img = input['img_syn'].cuda()
-        self.real_seg_l = input['seg_l_real'].cuda()
-        self.syn_seg_l = input['seg_l_syn'].cuda()
-        self.syn_dep_l = input['dep_l_syn'].cuda()
+        self.real_seg_l = input['seg_l_real'].squeeze(1).cuda()
+        self.syn_seg_l = input['seg_l_syn'].squeeze(1).cuda()
+        #print(self.syn_seg_l.shape)
+        self.syn_dep_l = input['dep_l_syn'].squeeze(1).cuda()
 
     def forward(self):
         self.syn_features1 = self.net_G_1(self.syn_img)
@@ -342,24 +340,3 @@ class Seg_Depth(BaseModel):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def create_model_segdepth(opt):
-    print(opt.model)
-    model = Seg_Depth()
-    model.initialize(opt)
-    print("model [%s] was created." % (model.name()))
-    return model
