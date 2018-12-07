@@ -23,17 +23,18 @@ with open(cityscape_txtpath,'r') as file:
         cat2color_cityscape[int(label)] = templist
 
 
-def label2im(image_tensor,syn_or_real):
-    if(syn_or_real=='syn'):
-        cat2color=cat2color_synthia
-    else:
-        cat2color=cat2color_cityscape
+def label2im(image_tensor):
 
-    if(image_tensor.shape[1]==1):
-        image_tensor=image_tensor.cpu().numpy()[0,0,:,:]
+
+    cat2color=cat2color_cityscape
+
+    if len(image_tensor.shape)==3:
+        print(image_tensor.shape)
+        image_tensor=image_tensor.cpu().numpy()[0,:,:]
     else:
-        image_tensor=image_tensor[0,:,:,:]
-        image_tensor=torch.argmax(image_tensor,dim=0)
+        print('++++++++++',image_tensor.shape)
+        image_tensor=np.argmax(image_tensor[0,:,:,:].cpu().numpy(),0)
+        print('------------',image_tensor.shape)
     h=image_tensor.shape[0]
     w=image_tensor.shape[1]
     image_show=np.zeros(shape=[h,w,3])
@@ -50,11 +51,16 @@ def label2im(image_tensor,syn_or_real):
 def tensor2im(input_image, imtype=np.uint8):
     if isinstance(input_image, torch.Tensor):
         image_tensor = input_image.data
+        if len(image_tensor.shape) == 3:
+            image_tensor = image_tensor.unsqueeze(1)
     else:
         return input_image
+
     image_numpy = image_tensor[0].cpu().float().numpy()
+
     if image_numpy.shape[0] == 1:
         image_numpy = np.tile(image_numpy, (3, 1, 1))
+    print(image_numpy.shape)
     image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0
     return image_numpy.astype(imtype)
 
