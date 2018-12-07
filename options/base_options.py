@@ -12,7 +12,7 @@ class BaseOptions():
 
     def initialize(self, parser):
         parser.add_argument('--dataroot', required=False,default='/home/dut-ai/Documents/temp/synthia',help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
-        parser.add_argument('--batch_size', type=int, default=10, help='input batch size')
+        parser.add_argument('--batch_size', type=int, default=8, help='input batch size')
         parser.add_argument('--loadSize', type=int, default=286, help='scale images to this size')
         parser.add_argument('--fineSize', type=int, default=256, help='then crop to this size')
         parser.add_argument('--display_winsize', type=int, default=256, help='display window size for both visdom and HTML')
