@@ -28,16 +28,6 @@ class PSPModule(nn.Module):
         bottle = self.bottleneck(torch.cat(priors, 1))
         return self.relu(bottle)
 
-def get_norm_layer(norm_type='instance'):
-    if norm_type == 'batch':
-        norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
-    elif norm_type == 'instance':
-        norm_layer = functools.partial(nn.InstanceNorm2d, affine=False, track_running_stats=False)
-    elif norm_type == 'none':
-        norm_layer = None
-    else:
-        raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
-    return norm_layer
 
 def get_scheduler(optimizer, opt):
     if opt.lr_policy == 'lambda':
@@ -83,8 +73,11 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     #     assert(torch.cuda.is_available())
     #     net.to(gpu_ids[0])
     #     net = torch.nn.DataParallel(net, gpu_ids)
-    net.to(gpu_ids[0])
+
+    net = net.cuda()
+    net = nn.DataParallel(net)
     init_weights(net, init_type, gain=init_gain)
+
     return net
 
 class G_1(nn.Module):
@@ -92,7 +85,7 @@ class G_1(nn.Module):
         assert(n_blocks>0)
         super(G_1, self).__init__()
         self.input_nc = input_nc
-        self.out_nc = out_nc
+        self.out_nc = 128
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
@@ -125,7 +118,7 @@ class G_1(nn.Module):
       #                ]
 
         model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(ngf*mult,out_nc, kernel_size=7,padding=0)]
+        model += [nn.Conv2d(ngf*mult,self.out_nc, kernel_size=7,padding=0)]
         model += [nn.Tanh()]
 
         self.model = nn.Sequential(*model)
@@ -167,7 +160,7 @@ class _Transition(nn.Sequential):
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
 class Discriminator(nn.Module):
-    def __init__(self, image_size=64 ,conv_dim=128, repeat_num=4):
+    def __init__(self ,conv_dim=128, repeat_num=4):
         super(Discriminator, self).__init__()
         layers = []
         curr_dim = conv_dim
@@ -177,17 +170,18 @@ class Discriminator(nn.Module):
             layers.append(nn.Dropout2d(0.2))
             curr_dim = curr_dim * 2
 
-        kernel_size = int(image_size / np.power(2, repeat_num-1))
+        #kernel_size = int(image_size / np.power(2, repeat_num-1))
         self.main = nn.Sequential(*layers)
-        self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=kernel_size, stride=kernel_size, padding=0, bias=False)
+        self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=1, stride=1, bias=False)
 
     def forward(self, input):
 
         h = self.main(input)
 
         out_src = self.conv1(h)
+        #print(out_src.shape)
 
-        return out_src.squeeze(1).squeeze(1)
+        return out_src.squeeze(1)
 
 class ResnetBlock(nn.Module):
     def __init__(self,dim,padding_type,norm_layer,use_dropout,use_bias):
@@ -254,21 +248,21 @@ class Feature_net(nn.Module):
             #    trans = pspTransition(num_input_features=num_features, num_output_features=mid_nc)
             #    self.features.add_module('transition%d' % (i + 1), trans)
         num_input_features = num_features
-        self.psp = []
+        self.psp = nn.ModuleList()
         num_output_features = mid_nc
-        self.psp.append(nn.BatchNorm2d(num_input_features).cuda())
-        self.psp.append(nn.ReLU(inplace=True).cuda())
-        self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=1, stride=1, bias=False).cuda())
-        self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=1, stride=1, dilation=1, bias=False).cuda())
+        self.psp.append(nn.BatchNorm2d(num_input_features))
+        self.psp.append(nn.ReLU(inplace=True))
+        self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=1, stride=1, bias=False))
+        self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=1, stride=1, dilation=1, bias=False))
         self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=2, stride=1,padding=1, dilation=2,
-                                  bias=False).cuda())
+                                  bias=False))
         self.psp.append(nn.Conv2d(num_input_features, int(num_output_features / 4), kernel_size=3, stride=1,padding=2, dilation=2,
-                                  bias=False).cuda())
+                                  bias=False))
       #  self.psp.append(nn.Conv2d(num_input_features, num_output_features / 5, kernel_size=3, stride=1, dilation=2,
        #                           bias=False))
 
         # Final batch norm
-        self.psp.append(nn.BatchNorm2d(mid_nc).cuda())
+        self.psp.append(nn.BatchNorm2d(mid_nc))
 
 
 
@@ -277,11 +271,9 @@ class Feature_net(nn.Module):
         features=[]
         for i, fe in enumerate(self.features):
             input = fe.forward(input)
-            print(i,input.shape)
+         #   print(i,input.shape)
             if i%2 ==0:
                 features.append(input)
-
-
         input  = self.psp[0](input)
         input = self.psp[1](input)
 
@@ -350,7 +342,7 @@ class DEP(nn.Module):
         for i in range(len(features)):
             j = len(features) - i - 1
             features_s.append(self.trans[i](features[j]))
-            print(i, input.shape, features[j].shape)
+           # print(i, input.shape, features[j].shape)
             S.append(self.Up[i](torch.cat([S[i], features_s[i]], 1)))
         S.append(self.Up[len(features)](S[len(features)]))
         S[len(features) + 1] = self.activation_seg(S[len(features) + 1])
@@ -358,10 +350,10 @@ class DEP(nn.Module):
         return S[len(features) + 1]
 
 
-def define_G(input_nc, output_nc, netG, norm='batch',
-             init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_G(input_nc, output_nc, netG,
+             init_type='normal', init_gain=0.02):
     net = None
-    norm_layer = get_norm_layer(norm_type=norm)
+
 
     if netG == '6blocks':
         net = G_1(input_nc, output_nc,  norm_layer=nn.BatchNorm2d,
@@ -376,22 +368,21 @@ def define_G(input_nc, output_nc, netG, norm='batch',
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
 
-    return init_net(net, init_type, init_gain, gpu_ids)
+    return init_net(net, init_type, init_gain)
 
-def define_D(input_nc, ndf, netD, norm='batch',
-             use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_D(input_nc,
+             init_type='normal', init_gain=0.02):
     net = None
-    norm_layer = get_norm_layer(norm_type=norm)
 
-    if netD == 'basic':
-        net = Discriminator(conv_dim=input_nc, image_size=ndf)
+
+    net = Discriminator()
     #elif netD == 'n_layers':
     #    net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
     #elif netD == 'pixel':
     #    net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
-    else:
-        raise NotImplementedError('Discriminator model name [%s] is not recognized' % net)
-    return init_net(net, init_type, init_gain, gpu_ids)
+    #
+    #    raise NotImplementedError('Discriminator model name [%s] is not recognized' % net)
+    return init_net(net, init_type, init_gain)
 class GANLoss(nn.Module):
     def __init__(self, use_lsgan=True, target_real_label=1.0, target_fake_label=0.0):
         super(GANLoss, self).__init__()
@@ -414,13 +405,13 @@ class GANLoss(nn.Module):
         return self.loss(input, target_tensor)
 
 if __name__ == '__main__':
-    x = torch.Tensor(5, 3, 256, 256).cuda()
+    x = torch.Tensor(5, 3, 256, 128).cuda()
     G = G_1(input_nc=3,out_nc=128).cuda()
     G2 = G_1(input_nc=3, out_nc=128).cuda()
     D = Discriminator().cuda()
 
 
-    F = Feature_net(input_nc=128,mid_nc =1024,out_nc=128).cuda()
+    F = Feature_net(input_nc=128,mid_nc =1024).cuda()
     y = G(x)
     dis = D(y)
     Features, Input = F(y)
