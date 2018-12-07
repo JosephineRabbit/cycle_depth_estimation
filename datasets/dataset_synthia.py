@@ -70,19 +70,19 @@ class CreateDataset(data.Dataset):
             img_target_path=opt.img_target_file_train
             lab_source_path=opt.lab_source_file_train
             lab_target_path=opt.lab_target_file_train
-            # depth_source_path=opt.depth_source_file_train
+            depth_source_path=opt.depth_source_file_train
         else:
             img_source_path = opt.img_source_file_test
             img_target_path = opt.img_target_file_test
             lab_source_path = opt.lab_source_file_test
             lab_target_path = opt.lab_target_file_test
-            # depth_source_path=opt.depth_source_file_test
+            depth_source_path=opt.depth_source_file_test
 
         self.img_source_paths, self.img_source_size = make_dataset(img_source_path)
         self.img_target_paths, self.img_target_size = make_dataset(img_target_path)
         self.lab_source_paths, self.lab_source_size = make_dataset(lab_source_path)
         self.lab_target_paths, self.lab_target_size = make_dataset(lab_target_path)
-        # self.depth_source_paths, self.depth_source_size = make_dataset(depth_source_path)
+        self.depth_source_paths, self.depth_source_size = make_dataset(depth_source_path)
 
         self.transform_augment_normalize = get_transform(opt, True,normalize=True)
         self.transform_no_augment_normalize = get_transform(opt, False,normalize=True)
@@ -201,7 +201,7 @@ class CreateDataset(data.Dataset):
         del target_dummy
         return {'img_source': img_source, 'img_target': img_target,
                 'lab_source': lab_source, 'lab_target': lab_target,
-                'dep_source': depth_source,
+                'depth_source': depth_source,
                 'img_source_paths': img_source_path, 'img_target_paths': img_target_path,
                 'lab_source_paths': lab_source_path, 'lab_target_paths': lab_target_path,
                 'depth_source_path':depth_source_path
@@ -261,9 +261,12 @@ if __name__ == '__main__':
     opt = TrainOptions().parse()
     dataset=dataloader(opt,train_or_test='train')
     for i, data in enumerate(dataset):
-        img=data['depth_source'].data.numpy()
+        img=data['lab_target'].data.numpy()
+        print(img.shape)
+        print(img.max())
         #
-        plt.imshow((np.squeeze(img)+1)/2)
+        #plt.imshow((np.squeeze(img)+1)/2)
+        plt.imshow(np.squeeze(img))
         plt.show()
 
     # import shutil
