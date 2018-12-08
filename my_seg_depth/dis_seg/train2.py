@@ -1,7 +1,7 @@
 import sys
 import time
 from options.train_options import TrainOptions
-from my_seg_depth.my_data import dataloader
+from my_seg_depth.dis_seg.my_data import dataloader
 from util.visualizer import Visualizer
 from tensorboardX import SummaryWriter
 
@@ -9,7 +9,7 @@ from torch.nn import init
 import torch
 #from .model import Seg_Depth
 #from  .networks import G_1,Discriminator,Feature_net,SEG,DEP
-from my_seg_depth.model2 import Seg_Depth,BaseModel
+from my_seg_depth.dis_seg.model2 import Seg_Depth
 import torch
 import itertools
 from util.image_pool import ImagePool
@@ -18,7 +18,6 @@ from util.util import scale_pyramid
 import os
 import util.util as util
 from collections import OrderedDict
-
 
 
 my_weights = [
@@ -60,7 +59,7 @@ def create_model_segdepth(opt):
     return model
 if __name__ == '__main__':
     opt = TrainOptions().parse()
-    opt.name = 'synthia_segCycle'
+
 
     dataset_train = dataloader(opt, train_or_test='train')
     dataset_test = dataloader(opt, train_or_test='test')
@@ -105,7 +104,7 @@ if __name__ == '__main__':
                 images = model.get_current_visuals()
 
                 for name, img in images.items():
-                    print(name,img.shape)
+
                     img = img / img.max()
                    # if len(img.shape)==3:
                     img = torch.from_numpy(img.transpose([2, 0, 1]))
@@ -116,6 +115,24 @@ if __name__ == '__main__':
                 model.save_networks('iter_%d' % total_steps)
 
             iter_data_time = time.time()
+
+            if (global_iter % 200 == 0 and global_iter > 200):
+                print("validation start")
+                model.eval()
+                for ii, data_test in enumerate(dataset_test):
+                    if (ii == 10):
+                        break
+                    with torch.no_grad():
+                        model.set_input(data_test)
+                        model.optimize_parameters(train_or_test='test')
+                    errors = model.get_current_losses()
+                    for name, error in errors.items():
+                        writer_test.add_scalar("{}test/{}".format(opt.name, name), error, global_iter + ii)
+                    images = model.get_current_visuals()
+                    for name, img in images.items():
+                        im = torch.from_numpy(img.transpose([2, 0, 1])).squeeze(0)
+                        writer_test.add_image("{}test/img_{}".format(opt.name, name), im, global_iter + ii)
+                print("validation done")
 
         if epoch % 5 == 0:
             print('saving the model at the end of epoch %d, iters %d' %

@@ -332,7 +332,7 @@ class Discriminator(nn.Module):
     def __init__(self ,conv_dim=64, repeat_num=4):
         super(Discriminator, self).__init__()
         layers = []
-        curr_dim = conv_dim
+        curr_dim = conv_dim+1
         for i in range(1, repeat_num):
             layers.append(nn.Conv2d(curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1))
             layers.append(nn.LeakyReLU(0.01))
@@ -343,9 +343,10 @@ class Discriminator(nn.Module):
         self.main = nn.Sequential(*layers)
         self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=1, stride=1, bias=False)
 
-    def forward(self, input):
+    def forward(self, input,sege):
 
-        h = self.main(input)
+        sege = nn.functional.upsample(input=sege,scale_factor=0.5)
+        h = self.main(torch.cat([sege,input],dim=1))
 
         out_src = self.conv1(h)
         #print(out_src.shape)
@@ -586,10 +587,7 @@ def define_G(input_nc, output_nc, netG,
 
     return init_net(net, init_type, init_gain)
 
-def define_D(input_nc,
-             init_type='normal', init_gain=0.02):
-    net = None
-
+def define_D(init_type='normal', init_gain=0.02):
 
     net = Discriminator()
     #elif netD == 'n_layers':
@@ -598,7 +596,8 @@ def define_D(input_nc,
     #    net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
     #
     #    raise NotImplementedError('Discriminator model name [%s] is not recognized' % net)
-    return init_net(net, init_type, init_gain)
+    return init_net(net)
+
 class GANLoss(nn.Module):
     def __init__(self, use_lsgan=True, target_real_label=1.0, target_fake_label=0.0):
         super(GANLoss, self).__init__()
@@ -638,6 +637,7 @@ def pretrain(dens):
 
 if __name__ == '__main__':
     x = torch.Tensor(2, 3, 256, 128).cuda()
+    s  = torch.Tensor(2, 1, 256, 128).cuda()
    # dens = densenet169(pretrained=True).cuda()
     G = G_1().cuda()
     #init_net(G)
@@ -648,6 +648,7 @@ if __name__ == '__main__':
 
     D = Discriminator().cuda()
     y = G(x)
+    d_pre = D(y,s)
     Features, Input = G2(x,R_or_S='R')
   #  Features, Input = F(y)
 

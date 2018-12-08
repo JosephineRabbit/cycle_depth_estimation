@@ -2,8 +2,8 @@ import torch
 import itertools
 from util.image_pool import ImagePool
 #from .base_model import BaseModel
-from my_seg_depth import networks2
-from my_seg_depth.networks2 import init_net, init_weights
+from my_seg_depth.dis_seg import networks2
+from my_seg_depth.dis_seg.networks2 import init_net, init_weights
 #from .encoder_decoder import _UNetEncoder,_UNetDecoder
 import torch.nn as nn
 from util.util import scale_pyramid
@@ -231,42 +231,50 @@ class Seg_Depth(BaseModel):
             self.model_names = ['G_1', 'G_2'
                                 ,'Seg_de','Dep_de']
 
-
+        self.net_Dis_en = networks2.Discriminator().cuda()
+        self.net_Dis_en = init_net(self.net_Dis_en)
 
         self.net_G_1 = networks2.G_1().cuda()
         #self.net_G_1 = nn.DataParallel(self.net_G_1)
         self.net_G_1.load_state_dict(torch.load(
-            '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/G1_model.pth'))
+            '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/checkpoints/new_seg2dep/'
+            'iter_30000_net_G_1.pth'))
+        self.net_G_1 = nn.DataParallel(self.net_G_1)
         self.net_G_2 = networks2.General_net().cuda()
-        #self.net_G_2 = nn.DataParallel(self.net_G_2)
+    #    self.net_G_2 = nn.DataParallel(self.net_G_2)
         self.net_G_2.load_state_dict(torch.load(
-            '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/General_model.pth'))
+            '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/checkpoints/new_seg2dep/'
+            'iter_30000_net_G_2.pth'))
+        self.net_G_2 = nn.DataParallel(self.net_G_2)
 
-        self.net_Dis_en = networks2.define_D(input_nc=64)
+
 
         self.net_Seg_de = networks2.SEG(n_cls=28).cuda()
         self.net_Seg_de = init_net(self.net_Seg_de)
-     #   self.net_Seg_de.load_state_dict(torch.load(
-      #      '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/checkpoints/new_seg2dep/iter_5000_net_Seg_de.pth'))
+        self.net_Seg_de.load_state_dict(torch.load(
+            '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/checkpoints/new_seg2dep/'
+            'iter_30000_net_Seg_de.pth'))
+
 
         self.net_Dep_de = networks2.DEP().cuda()
         self.net_Dep_de = init_net(self.net_Dep_de)
-       # self.net_Dep_de.load_state_dict(torch.load(
-       #     '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/checkpoints/new_seg2dep/iter_5000_net_Dep_de.pth'
-       # ))
+        self.net_Dep_de.load_state_dict(torch.load(
+            '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/checkpoints/'
+            'new_seg2dep/iter_30000_net_Dep_de.pth'
+        ))
 
 
         self.optimizer_G_1 = torch.optim.Adam(self.net_G_1.parameters(),
-                                            lr=opt.lr, betas=(opt.beta1, 0.999))
+                                            lr=opt.lr/2, betas=(opt.beta1, 0.999))
         self.optimizer_G_2 = torch.optim.Adam(self.net_G_2.parameters(),
-                                              lr=opt.lr,betas=(opt.beta1,0.999))
+                                              lr=opt.lr/2,betas=(opt.beta1,0.999))
 
         self.optimizer_Seg = torch.optim.Adam(self.net_Seg_de.parameters(),
-                                              lr=opt.lr,betas=(opt.beta1,0.999))
+                                              lr=opt.lr/2,betas=(opt.beta1,0.999))
         self.optimizer_Dep = torch.optim.Adam(self.net_Dep_de.parameters(),
-                                              lr=opt.lr, betas=(opt.beta1, 0.999))
+                                              lr=opt.lr/2, betas=(opt.beta1, 0.999))
         self.optimizer_D = torch.optim.Adam(itertools.chain(self.net_Dis_en.parameters()),
-                                            lr=opt.lr, betas=(opt.beta1, 0.999))
+                                            lr=opt.lr/4 , betas=(opt.beta1, 0.999))
 
 
         self.syn_imgpool = ImagePool(opt.pool_size)
@@ -296,9 +304,9 @@ class Seg_Depth(BaseModel):
 
 
     def backward_D(self):
-        pre_s = self.net_Dis_en(self.syn_features1.detach())
+        pre_s = self.net_Dis_en(self.syn_features1.detach(),self.syn_seg_l.unsqueeze(1).float())
         self.loss_D_syn = self.criterionGAN(pre_s,False)
-        pre_r = self.net_Dis_en(self.real_features1.detach())
+        pre_r = self.net_Dis_en(self.real_features1.detach(),self.real_seg_l.unsqueeze(1).float())
         self.loss_D_real = self.criterionGAN(pre_r,True)
         return self.loss_D_syn+self.loss_D_real
 
@@ -310,7 +318,7 @@ class Seg_Depth(BaseModel):
         self.loss_seg_syn = self.criterionSeg(seg_syn_pre,self.syn_seg_l)
         self.loss_seg_real = self.criterionSeg(seg_real_pre,self.real_seg_l)
 
-        return 5*self.loss_seg_real+self.loss_seg_syn
+        return self.loss_seg_real+self.loss_seg_syn
 
     def backward_Dep(self):
         syn_f2, syn_inf = self.net_G_2(self.syn_features1.detach(),'S')
@@ -321,7 +329,7 @@ class Seg_Depth(BaseModel):
 
     def backward_G(self):
         self.set_requires_grad(self.net_Seg_de, False)
-        pre_s = self.net_Dis_en(self.syn_features1)
+        pre_s = self.net_Dis_en(self.syn_features1,self.syn_seg_l.unsqueeze(1).float())
         self.loss_G1_dis = self.criterionGAN(pre_s, True)
         syn_f2, syn_inf = self.net_G_2(self.syn_features1.detach(),'S')
         real_f2, real_inf = self.net_G_2(self.real_img,'R')
