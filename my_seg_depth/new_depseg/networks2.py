@@ -286,7 +286,7 @@ class Discriminator(nn.Module):
             layers.append(nn.Conv2d(curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1))
             layers.append(nn.LeakyReLU(0.01))
             layers.append(nn.Dropout2d(0.2))
-            curr_dim = intcurr_dim / 2
+            curr_dim = curr_dim / 2
 
         #kernel_size = int(image_size / np.power(2, repeat_num-1))
         self.main = nn.Sequential(*layers)
@@ -441,6 +441,24 @@ class General_net(nn.Module):
             input = self.features[3](input)
             return input.detach()
 
+
+def ordimat(bs,n, m):
+    nlist = range(0, n)
+    nlist = np.tile(nlist, (m, 1))
+    nlist = np.transpose(nlist)
+
+    mlist = range(0, m)
+    m = np.tile(mlist, (n, 1))
+   # M = np.zeros((2, n, m))
+    M=[nlist,m]
+
+    mm = torch.tensor(M).cuda().float()
+    mm = mm.unsqueeze(0).repeat(bs, 1, 1, 1)
+
+
+    return mm
+
+
 class Discriminator_seg(nn.Module):
 
     def __init__(self, conv_dim=1024, repeat_num=3):
@@ -544,16 +562,17 @@ class DEP(nn.Module):
         super(DEP, self).__init__()
 
         self.Up = nn.ModuleList()
-        self.Up.append(DeconvBlock(1024, 512))
-        self.Up.append(DeconvBlock(512, 256))
-        self.Up.append(DeconvBlock(256,128))
-        self.Up.append(DeconvBlock(128, 64))
+        self.Up.append(DeconvBlock(1024+2, 512))
+        self.Up.append(DeconvBlock(512+2, 256))
+        self.Up.append(DeconvBlock(256+2,128))
+        self.Up.append(DeconvBlock(128+2, 64))
 
         self.Up.append(nn.Conv2d(64,1, 1, 1))
         self.activation_seg =nn.Tanh()
 
     def forward(self, input):
         features_s = []
+        Ord=[]
         # print(features[0].shape)
         # features[0]=self.trans_0(features[0])
 
@@ -561,7 +580,11 @@ class DEP(nn.Module):
         S.append(input)
         # print(len(features))
         for i in range(len(self.Up)):
-            S.append(self.Up[i](S[i]))
+            if i != (len(self.Up)-1):
+                Ord.append(ordimat(S[i].shape[0], S[i].shape[2], S[i].shape[3]))
+                S.append(self.Up[i](torch.cat([S[i],Ord[i]],dim=1)))
+            else:
+                S.append(self.Up[i](S[i]))
             # print(len(S))
         # S.append(self.Up[len(features)](S[len(features)]))
         S[len(self.Up)] = self.activation_seg(S[len(self.Up)])
