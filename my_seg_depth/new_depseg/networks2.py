@@ -522,7 +522,7 @@ class Discriminator2_seg(nn.Module):
         #sege = nn.functional.upsample(input=sege, scale_factor=0.25)
         h = self.main(input)
         out_src = self.conv1(h)
-        out_src = nn.LeakyReLU()(out_src)
+        out_src = nn.Sigmoid()(out_src)
 
         return out_src.squeeze(1)
 
@@ -631,7 +631,7 @@ class GANLoss(nn.Module):
        # if use_lsgan:
        #     self.loss = nn.MSELoss()
         #else:
-        self.loss = nn.MSELoss()
+        self.loss = nn.BCELoss()
 
     def get_target_tensor(self, input, target_is_real):
         if target_is_real:
@@ -643,6 +643,7 @@ class GANLoss(nn.Module):
     def __call__(self, input, target_is_real):
         target_tensor = self.get_target_tensor(input, target_is_real)
         return self.loss(input, target_tensor)
+
 
 
 def pretrain(dens):
