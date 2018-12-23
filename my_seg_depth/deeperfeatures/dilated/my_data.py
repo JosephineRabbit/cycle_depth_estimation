@@ -132,20 +132,20 @@ class CreateDataset(data.Dataset):
 
         img_source = Image.open(img_source_path).convert('RGB')
         img_target = Image.open(img_target_path).convert('RGB')
-        img_source = img_source.resize([640, 192], Image.BILINEAR)
-        img_target = img_target.resize([640, 192], Image.BILINEAR)
+        img_source = img_source.resize([640, 352], Image.BILINEAR)
+        img_target = img_target.resize([640, 352], Image.BILINEAR)
 
         depth_source_path = self.depth_source_paths[item % self.depth_source_size]
         depth_source = Image.open(depth_source_path)  # .convert('RGB')
-        depth_source = depth_source.resize([640, 192], Image.BILINEAR)
+        depth_source = depth_source.resize([640, 352], Image.BILINEAR)
 
         lab_source_path = self.lab_syn_paths[item % self.lab_syn_size]
         lab_target_path = self.lab_real_paths[index]
 
         lab_source = Image.open(lab_source_path)  # .convert('RGB')
         lab_target = Image.open(lab_target_path)  # .convert('RGB')
-        lab_source = lab_source.resize([640, 192], Image.NEAREST)
-        lab_target = lab_target.resize([640, 192], Image.NEAREST)
+        lab_source = lab_source.resize([640, 352], Image.NEAREST)
+        lab_target = lab_target.resize([640, 352], Image.NEAREST)
 
         if (self.train_or_test == 'train'):
             img_source, lab_source, depth_source, scale = paired_transform_(self.opt, img_source, lab_source,

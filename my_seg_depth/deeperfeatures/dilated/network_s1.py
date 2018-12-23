@@ -507,7 +507,7 @@ class Discriminator_seg(nn.Module):
 
 class Discriminator2_seg(nn.Module):
 
-    def __init__(self, conv_dim=512, repeat_num=3):
+    def __init__(self, conv_dim=1024, repeat_num=3):
         super(Discriminator2_seg, self).__init__()
         #cls_layers = []
         #cls_layers.append(nn.Conv2d(28,256,1,1))
@@ -518,8 +518,9 @@ class Discriminator2_seg(nn.Module):
         for i in range(repeat_num):
             layers.append(nn.Conv2d(curr_dim,int(curr_dim / 2), kernel_size=1, stride=1, padding=0))
 
-            layers.append(nn.Dropout(0.2))
-            layers.append(nn.LeakyReLU(0.01))
+            layers.append(nn.Dropout(0.3))
+            layers.append(nn.LeakyReLU(0.02))
+            layers.append(nn.BatchNorm2d(int(curr_dim / 2)))
 
             curr_dim = int(curr_dim / 2)
 
@@ -566,7 +567,7 @@ class SEG(nn.Module):
         #S.append(self.Up[len(features)](S[len(features)]))
         S[len(self.Up)] = self.activation_seg(S[len(self.Up)])
 
-        return S[len(self.Up)],S[len(self.Up)-4]
+        return S[len(self.Up)],S[len(self.Up)-5]
 
 
 class DEP(nn.Module):
@@ -575,11 +576,11 @@ class DEP(nn.Module):
 
 
 
-        self.features=ResnetBlock(in_dim=512,padding_type='zero',norm_layer=nn.BatchNorm2d,use_dropout=0,use_bias=0)
+        self.features=ResnetBlock(in_dim=1024,padding_type='zero',norm_layer=nn.BatchNorm2d,use_dropout=0,use_bias=0)
 
         self.Up = nn.ModuleList()
 
-        #self.Up.append(DeconvBlock(1024+2, 512))
+        self.Up.append(DeconvBlock(1024+2, 512))
         self.Up.append(DeconvBlock(512+2,256))
         self.Up.append(DeconvBlock(256 + 2, 128))
         self.Up.append(DeconvBlock(128+ 2, 64))
@@ -595,6 +596,7 @@ class DEP(nn.Module):
         # features[0]=self.trans_0(features[0])
 
         input =self.features(input)
+        print('dep',input.shape)
         S = []
         S.append(input)
         # print(len(features))
@@ -666,6 +668,14 @@ class GANLoss(nn.Module):
 
 
 def pretrain(dens):
+
+    init_net(G)
+    G_dict = G.state_dict()
+    G2 = General_net().cuda()
+
+    init_net(G2)
+    G2_dict = G2.state_dict()
+
     m, n = 0, 0
     for i, name in enumerate(dens.state_dict()):
         print(name)
@@ -682,26 +692,28 @@ def pretrain(dens):
             #  torch.save(G2.state_dict(), './General_model.pth')
 
 if __name__ == '__main__':
-    x = torch.Tensor(2, 3, 256, 128).cuda()
-    s  = torch.Tensor(2, 1, 256, 128).cuda()
+    x = torch.Tensor(2, 3, 640,352).cuda()
+    s  = torch.Tensor(2, 1, 640, 352).cuda()
     dens = densenet169(pretrained=True).cuda()
     G = General_net().cuda()
 
-    init_net(G)
-    G_dict = G.state_dict()
-    G2 = General_net().cuda()
-
-    init_net(G2)
-    G2_dict = G2.state_dict()
-
-
     Dep = DEP().cuda()
-    y = G(x,R_or_S='R')
+
 
     SEg = SEG(n_cls=28).cuda()
-    z,zz = SEg(y)
-    print(zz.shape)
-    dep = Dep(zz)
 
-    print(z.shape,dep.shape)
+
+    syn_features1 = G(x, 'R')
+
+    # pre_s = self.net_Dis_en(self.syn_features1)
+    # self.loss_G1_dis = self.criterionGAN(pre_s, True)
+    # if self.loss_G1_dis>1:
+    #     self.loss_G1_loss = torch.log(self.loss_G1_loss)+1
+
+    seg_syn_pre, syn_features2 = SEg(syn_features1)
+    #  self.syn_features1_ = self.net_G_1(self.syn_img, 'R')
+
+    dep_syn_pre = Dep(syn_features2)
+
+    print(dep_syn_pre.shape)
 
