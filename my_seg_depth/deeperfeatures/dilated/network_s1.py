@@ -518,18 +518,21 @@ class Discriminator2_seg(nn.Module):
         for i in range(repeat_num):
             layers.append(nn.Conv2d(curr_dim,int(curr_dim / 2), kernel_size=1, stride=1, padding=0))
 
-            layers.append(nn.Dropout(0.3))
-            layers.append(nn.LeakyReLU(0.02))
+           # layers.append(nn.Dropout(0.))
+            layers.append(nn.LeakyReLU(0.01))
             layers.append(nn.BatchNorm2d(int(curr_dim / 2)))
 
             curr_dim = int(curr_dim / 2)
+        #layers.append(nn.MaxPool2d(2))
+
+
 
 
 
         # kernel_size = int(image_size / np.power(2, repeat_num-1))
 
         self.main = nn.Sequential(*layers)
-        self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=1, stride=1, bias=False)
+        self.conv1 = nn.Conv2d(curr_dim, 1, kernel_size=3, stride=2, padding=1,bias=False)
 
     def forward(self,input):
         #sege = nn.functional.upsample(input=sege, scale_factor=0.25)

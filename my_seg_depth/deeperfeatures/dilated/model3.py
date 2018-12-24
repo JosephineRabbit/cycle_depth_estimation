@@ -2,8 +2,8 @@ import torch
 import itertools
 from util.image_pool import ImagePool
 #from .base_model import BaseModel
-from my_seg_depth.deeperfeatures.dilated import network_s1
-from my_seg_depth.deeperfeatures.dilated.network_s1 import init_net, init_weights
+from my_seg_depth.deeperfeatures.dilated import networks2
+from my_seg_depth.deeperfeatures.dilated.networks2 import init_net, init_weights
 #from .encoder_decoder import _UNetEncoder,_UNetDecoder
 import torch.nn as nn
 from util.util import scale_pyramid
@@ -44,11 +44,11 @@ class BaseModel():
 
     def setup(self, opt, parser=None):
         if self.is_Train:
-            self.schedulers = [network_s1.get_scheduler(optimizer, opt) for optimizer in self.optimizers]
+            self.schedulers = [networks2.get_scheduler(optimizer, opt) for optimizer in self.optimizers]
 
         if not self.is_Train or opt.continue_train:
-            self.load_network_s1(opt.epoch)
-        self.print_network_s1(opt.verbose)
+            self.load_networks2(opt.epoch)
+        self.print_networks2(opt.verbose)
 
         # make models eval mode during test time
 
@@ -154,7 +154,7 @@ class BaseModel():
             self.__patch_instance_norm_state_dict(state_dict, getattr(module, key), keys, i + 1)
 
     # load models from the disk
-    def load_network_s1(self, epoch):
+    def load_networks2(self, epoch):
         for name in self.model_names:
             if isinstance(name, str):
                 load_filename = '%s_net_%s.pth' % (epoch, name)
@@ -175,7 +175,7 @@ class BaseModel():
                 net.load_state_dict(state_dict)
 
     # print network information
-    def print_network_s1(self, verbose):
+    def print_networks2(self, verbose):
         print('---------- Networks initialized -------------')
         for name in self.model_names:
             if isinstance(name, str):
@@ -258,13 +258,13 @@ class Seg_Depth(BaseModel):
         else:  # during test time, only load Gs
             self.model_names = ['G_1', 'G_2','Dep_de',
                                'Seg_de']
-        self.net_Dis0_en = network_s1.Discriminator2_seg().cuda()
+        self.net_Dis0_en = networks2.Discriminator2_seg().cuda()
         self.net_Dis0_en = init_net(self.net_Dis0_en)
-       # self.net_Dis1_en = network_s1.Discriminator2_seg().cuda()
+       # self.net_Dis1_en = networks2.Discriminator2_seg().cuda()
        # self.net_Dis1_en = init_net(self.net_Dis1_en)
-        #self.net_Dis2_en = network_s1.Discriminator2_seg().cuda()
+        #self.net_Dis2_en = networks2.Discriminator2_seg().cuda()
        # self.net_Dis2_en = init_net(self.net_Dis2_en)
-        #self.net_Dis3_en = network_s1.Discriminator2_seg().cuda()
+        #self.net_Dis3_en = networks2.Discriminator2_seg().cuda()
         #self.net_Dis3_en = init_net(self.net_Dis3_en)
        # self.net_Dis_en = nn.DataParallel(self.net_Dis_en)
 
@@ -272,7 +272,7 @@ class Seg_Depth(BaseModel):
      #       '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/new_depseg/checkpoints/new_seg2dep/'
       #      'iter_60000_net_Dis_en.pth'))
 
-        self.net_G_1 = network_s1.General_net().cuda()
+        self.net_G_1 = networks2.General_net().cuda()
         self.net_G_1 = nn.DataParallel(self.net_G_1)
 
         self.net_G_1.load_state_dict(torch.load(
@@ -280,7 +280,7 @@ class Seg_Depth(BaseModel):
         '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/new_depseg/checkpoints/4dis/iter_112000_net_G_1.pth'))
         print('1')
 
-        self.net_G_2 = network_s1.General_net().cuda()
+        self.net_G_2 = networks2.General_net().cuda()
         self.net_G_2 = nn.DataParallel(self.net_G_2)
 
         self.net_G_2.load_state_dict(torch.load(
@@ -289,14 +289,14 @@ class Seg_Depth(BaseModel):
 
         print('2')
 
-        self.net_Seg_de = network_s1.SEG(n_cls=28).cuda()
+        self.net_Seg_de = networks2.SEG(n_cls=28).cuda()
         ## self.net_Seg_de = init_net(self.net_Seg_de)
         self.net_Seg_de = nn.DataParallel(self.net_Seg_de)
         self.net_Seg_de.load_state_dict(torch.load(
             #'./4dis/iter_10000_net_Seg_de.pth'
         '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/new_depseg/checkpoints/4dis/iter_112000_net_Seg_de.pth'))
         # self.net_Seg_de = nn.DataParallel(self.net_Seg_de)
-        self.net_Dep_de = network_s1.DEP().cuda()
+        self.net_Dep_de = networks2.DEP().cuda()
         self.net_Dep_de = init_net(self.net_Dep_de)
         #self.net_Dep_de = nn.DataParallel(self.net_Dep_de)
 
@@ -330,7 +330,7 @@ class Seg_Depth(BaseModel):
         self.syn_imgpool = ImagePool(opt.pool_size)
         self.real_imgpool = ImagePool(opt.pool_size)
 
-        self.criterionGAN = network_s1.GANLoss(use_lsgan =True)
+        self.criterionGAN = networks2.GANLoss(use_lsgan =True)
         self.criterionSeg = torch.nn.CrossEntropyLoss(size_average=True, ignore_index=255).cuda()
         self.criterionDep = torch.nn.L1Loss()
 
@@ -467,7 +467,7 @@ class Seg_Depth(BaseModel):
         #pre_r = self.net_Dis_en(self.real_features3, self.real_seg_l.unsqueeze(1).float())
         #self.loss_DIS_real = self.criterionGAN(pre_r, False)
 
-        return self.loss_seg_real+2*loss_D_syn0#+self.loss_seg_syn#+0.05*self.loss_adv_DIS_syn
+        return self.loss_seg_real+5*loss_D_syn0#+self.loss_seg_syn#+0.05*self.loss_adv_DIS_syn
 
     def real_dep_loss(self,seg_p, seg_l, dep_p, dep_l):
         seg_l =seg_l.float().cuda()
@@ -507,16 +507,25 @@ class Seg_Depth(BaseModel):
 
         seg_syn_pre, syn_features2 = self.net_Seg_de(self.syn_features1)
       #  self.syn_features1_ = self.net_G_1(self.syn_img, 'R')
-
         dep_syn_pre = self.net_Dep_de(syn_features2)
         print('pre_dep_f',syn_features2.shape)
+
+
+
+        pre_s = self.net_Dis0_en(syn_features2)
+
+        # pre_s0 = self.net_Dis0_en(syn_features1[:, :256, :, :])
+        # pre_s1 = self.net_Dis1_en(syn_features1[:, 256:512, :, :])
+        #    pre_s2 = self.net_Dis2_en(syn_features1[:, 512:768, :, :])
+        #   pre_s3 = self.net_Dis3_en(syn_features1[:, 768:1024, :, :])
+        loss_D_syn0 = self.criterionGAN(pre_s, True)
 
         loss_dep = self.criterionDep(dep_syn_pre, self.syn_dep_l)
 
         loss_seg_syn = self.criterionSeg(seg_syn_pre, self.syn_seg_l)
         #seg_syn_pre, seg_syn_feaetures3 = self.net_Seg_de(syn_f2, syn_inf)
 
-        self.loss_G_1 =  loss_seg_syn+loss_dep
+        self.loss_G_1 =  loss_seg_syn+loss_dep+5*loss_D_syn0
 
 
         return self.loss_G_1
