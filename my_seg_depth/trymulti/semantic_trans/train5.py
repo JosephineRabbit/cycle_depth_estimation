@@ -20,37 +20,6 @@ import os
 from collections import OrderedDict
 
 
-my_weights = [
-    1.2,#ground
-    0.9,#road
-    1.3,#sidewalk
-    1.3,#parking
-    1.3,#railtrack
-    0.9,#building
-    1.1,#wall
-    1.2,#fence
-    1.2,#guardrail
-    1.3,#bridge
-    1.3,#tunnel
-    1.3,#pole
-    1.3,#polegroup
-    1.4,#trafficlight
-    1.4,#trafficsign
-    1.2,#vegetation
-    1.3,#terrain
-    1.1,#sky
-    1.5,#person
-    1.6,#rider
-    1.1,#car
-    1.3,#truck
-    1.3,#bus
-    1.3,#carvan
-    1.5,#trailer
-    1.5,#train
-    1.6,#motorcycle
-    1.4,#biicycle
-    ]
-
 def create_model_segdepth(opt):
     print(opt.model)
     model = Seg_Depth()
@@ -64,8 +33,6 @@ if __name__ == '__main__':
     writer_train = SummaryWriter(log_dir='./summary/1_9_2_vt_t')
     writer_test = SummaryWriter(log_dir='./summary/1_9_2_vt_t')
     opt = TrainOptions().parse()
-    #opt = TrainOptions().parse()
-  #  dataset_train = dataloader(opt, train_or_test='train')
 
     dataset_train = dataloader(opt, train_or_test='train')
 
