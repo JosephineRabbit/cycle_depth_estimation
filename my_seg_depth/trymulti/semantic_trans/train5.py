@@ -14,9 +14,7 @@ import torch
 import itertools
 from util.image_pool import ImagePool
 import torch.nn as nn
-#from util.util import scale_pyramid
-import os
-#import util.util as util
+
 from collections import OrderedDict
 
 
