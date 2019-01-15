@@ -529,22 +529,24 @@ class depth_block(nn.Module):
         for i in range(4):
             self.upconv.append(nn.Sequential(nn.ConvTranspose2d(in_c,int(in_c/2),4,2,padding=1) , nn.LeakyReLU(0.02)
             ,nn.BatchNorm2d(int(in_c/2)),
-            nn.Conv2d(int(in_c / 2), int(in_c / 2), 3, 1, padding=1),nn.LeakyReLU(0.02),nn.BatchNorm2d(int(in_c/2))))
+            #nn.Conv2d(int(in_c / 2), int(in_c / 2), 3, 1, padding=1),nn.LeakyReLU(0.02),nn.BatchNorm2d(int(in_c/2))
+                                             ))
 
-            self.depth_out.append(nn.Sequential(nn.Conv2d(int(in_c/2),1,3,1,padding=1),nn.Tanh()))
+            self.depth_out.append(nn.Sequential(nn.Conv2d(int(in_c/2),1,3,1,padding=1),nn.Tanh()
+                                                ))
 
             self.attention_bs.append(nn.Sequential(nn.Conv2d(in_c,int(in_c/2),3,2,padding=1) , nn.LeakyReLU(0.02)
-            ,nn.BatchNorm2d(int(in_c/2)),
+            ,nn.BatchNorm2d(int(in_c/2))
 
-            nn.Conv2d(int(in_c / 2), int(in_c / 2), 3, 2, padding=1),nn.LeakyReLU(0.02)
+           # nn.Conv2d(int(in_c / 2), int(in_c / 2), 3, 2, padding=1),nn.LeakyReLU(0.02)
             ,nn.AdaptiveAvgPool2d(1)))
         #self.depth_out.append(nn.Sequential(nn.Conv2d(int(in_c / 2), 1, 1, 1), nn.BatchNorm2d(1), nn.Tanh()))
 
         self.at_act = nn.Sigmoid()
-        self.conv = nn.Sequential(nn.Conv2d(int(in_c*2),int(in_c),3,1,padding=1),
+        self.conv = nn.Sequential(nn.Conv2d(int(in_c*2),int(in_c/2),3,1,padding=1),
                                      nn.LeakyReLU(0.02),
-                                  nn.BatchNorm2d(int(in_c)),
-                                  nn.Conv2d(int(in_c), int(in_c / 2), 3, 1, padding=1), nn.LeakyReLU(0.02),nn.BatchNorm2d(int(in_c / 2))
+                                  nn.BatchNorm2d(int(in_c/2)),
+                                  #nn.Conv2d(int(in_c), int(in_c / 2), 3, 1, padding=1), nn.LeakyReLU(0.02),nn.BatchNorm2d(int(in_c / 2))
 
                                   )
 
@@ -552,7 +554,8 @@ class depth_block(nn.Module):
                                      nn.Conv2d(int(in_c/2),1,3,1,padding=1),nn.BatchNorm2d(1),
                                      nn.Sigmoid())
         self.depconv = nn.Sequential(nn.Conv2d(int(in_c/2),1,3,stride=1,padding=1),nn.BatchNorm2d(1),
-                                     nn.Tanh())
+                                     #nn.Tanh()
+                                     )
 
     def forward(self,in_f):
         dep_o = []
@@ -565,7 +568,7 @@ class depth_block(nn.Module):
             dep_o.append(self.depth_out[i](features[i]))
             at.append(self.attention_bs[i](in_f))
             #print('att',at[i].shape)
-            out_f.append(torch.mul(self.at_act(at[i]),features[i]))
+            out_f.append(torch.mul(self.at_act(at[i]),features[i])+features[i])
         F = torch.cat([out_f[0],out_f[1],out_f[2],out_f[3]],1)
         F = self.conv(F)
         ds_e=self.s_econv(F)
@@ -635,7 +638,7 @@ class R_dep(nn.Module):
         self.dep_out = nn.Conv2d(64,1,1,1)
 
         self.norm = nn.BatchNorm2d(1)
-        self.act = nn.Tanh()
+        #self.act = nn.Tanh()
 
     def forward(self,s_features,d_feature):
 
@@ -768,7 +771,7 @@ class DEP(nn.Module):
         self.Up.append(DeconvBlock(128+ 2, 64))
 
         self.Up.append(nn.Conv2d(64,1, 1, 1))
-        self.activation_seg =nn.Tanh()
+       # self.activation_seg =nn.Tanh()
 
     def forward(self, input):
         features_s = []
@@ -784,7 +787,7 @@ class DEP(nn.Module):
                 S.append(self.Up[i](S[i]))
             # print(len(S))
         # S.append(self.Up[len(features)](S[len(features)]))
-        S[len(self.Up)] = self.activation_seg(S[len(self.Up)])
+        #S[len(self.Up)] = self.activation_seg(S[len(self.Up)])
 
         return S[len(self.Up)]
 
@@ -837,6 +840,19 @@ class GANLoss(nn.Module):
 
 
 
+class BCEDepLoss(nn.Module):
+    def __init__(self):
+        super(BCEDepLoss, self).__init__()
+        self.bce = nn.BCELoss()
+        self.L1 = nn.L1Loss()
+
+    def __call__(self, input,target,o_m,z_m):
+        target_ = target.contiguous()
+
+        return self.bce((input+1)/2*o_m,(target_+1)/2*o_m)#+self.bce((input+1)/2*z_m,(target_+1)/2*z_m)+self.L1(input,target_)
+
+
+
 def pretrain(dens):
 
     m, n = 0, 0
@@ -850,16 +866,29 @@ def pretrain(dens):
     print(n, m)
     torch.save(G1.state_dict(), './G_1_model.pth')
 
+def get_masks(target):
+    o_m = target.contiguous()
+    o_m.requires_grad = False
+    z_m = target.contiguous()
+    z_m.requires_grad = False
+
+    o_m[o_m != 1] = 0
+    z_m[z_m != -1] = 0
+    z_m[z_m == -1] = 1
+    return o_m,z_m
+
 if __name__ == '__main__':
 
     x = torch.Tensor(2, 3, 480,160).cuda()
 
-    s = torch.Tensor(2, 2, 480,160).cuda()
+    s = torch.zeros(2, 2, 480,160).cuda()
+    o_m,z_m = get_masks(s)
     dens = densenet169(pretrained=True).cuda()
     G = General_net().cuda()
     R_D = R_dep().cuda()
     #R_D = nn.DataParallel(R_D)
     G1 = G_1().cuda()
+    bce = BCEDepLoss()
     #G = nn.DataParallel(G)
     #G1 = nn.DataParallel(G1)
     G1_dict = G1.state_dict()
@@ -889,9 +918,11 @@ if __name__ == '__main__':
         print('Seg-',i.shape)
     for i in Dep:
         print('Dep-',i.shape)
-
-    loss = torch.nn.L1Loss()(SeD[2],s)
-    loss.backward()
+    s1 = s.detach()
+    s2 = s.detach()
+    loss_1 = bce(SeD[2][:,1,:,:],s,o_m,z_m)+bce(SeD[1][:,1,:,:],s,o_m,z_m)
+    #loss = loss_1+bce(SeD[1][:,1,:,:],s)
+    loss_1.backward()
     op.step()
 
 
