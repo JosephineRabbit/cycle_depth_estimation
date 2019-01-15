@@ -3,7 +3,7 @@ import itertools
 from util.image_pool import ImagePool
 #from .base_model import BaseModel
 from my_seg_depth.trymulti.semantic_trans import networks5_ds
-from my_seg_depth.trymulti.semantic_trans.networks5_ds import init_net, init_weights,GramMatrix
+from my_seg_depth.trymulti.semantic_trans.networks5_ds import init_net, init_weights,GramMatrix,get_masks
 import torch.nn as nn
 import os
 import util.util as util
@@ -32,6 +32,7 @@ class BaseModel():
         self.loss_names = []
         self.model_names = []
         self.visual_names = []
+        self.dep_ref_name = []
         self.image_paths = []
 
     def set_input(self,input):
@@ -95,6 +96,17 @@ class BaseModel():
                 else:
                     visual_ret[name] = util.tensor2im(visual_data)
         return visual_ret
+    def get_eval_visuals(self):
+        visual_ret = OrderedDict()
+        for name in self.dep_ref_name:
+            if isinstance(name, str):
+                value = getattr(self, name)
+                if isinstance(value, list):
+                    visual_data=value[-1].data
+                else:
+                  visual_data=value.data
+                visual_ret[name] = util.tensor2im(visual_data)
+        return visual_ret
 
     def save_current_visuals(self):
         visual_ret = OrderedDict()
@@ -130,7 +142,7 @@ class BaseModel():
     # save models to the disk
     def save_networks(self, epoch):
         for name in self.model_names:
-            save_dir = './checkpoints/1_11'
+            save_dir = './checkpoints/1_14'
 
             print(name)
             save_filename = '%s_net_%s.pth' % (epoch, name)
@@ -177,39 +189,6 @@ class BaseModel():
                 for param in net.parameters():
                     param.requires_grad = requires_grad
 
-my_weights = torch.tensor(
-    (
-    1.4,#ground 0
-    0.8,#road 1
-    1.2,#sidewalk 2
-    1.4,#parking 3
-    1.3,#railtrack 4
-    0.8,#building 5
-    1.3,#wall 6
-    1.4,#fence 7
-    1.4,#guardrail 8
-    1.4,#bridge 9
-    1.4,#tunnel 10
-    1.4,#pole 11
-    1.4,#polegroup 12
-    1.5,#trafficlight 13
-    1.5,#trafficsign 14
-    1.2,#vegetation 15
-    1.3,#terrain 16
-    1.1,#sky 17
-    2,#person 18
-    2,#rider19
-    1.1,#car 20
-    1.8,#truck
-    1.8,#bus
-    1.8,#carvan
-    1.8,#trailer
-    1.8,#train
-    1.8,#motorcycle
-    1.8,#biicycle
-    )
-)
-
 
 class Seg_Depth(BaseModel):
 
@@ -219,8 +198,6 @@ class Seg_Depth(BaseModel):
     def initialize(self,opt):
         BaseModel.initialize(self,opt)
 
-
-
         self.net_Dis0_en = networks5_ds.Discriminator2_seg().cuda()
         self.net_Dis0_en = init_net(self.net_Dis0_en)
         self.net_DIS = networks5_ds.Discriminator(repeat_num=5).cuda()
@@ -229,7 +206,7 @@ class Seg_Depth(BaseModel):
         self.net_G_1 = networks5_ds.G_1().cuda()
         self.net_G_1 = nn.DataParallel(self.net_G_1)
         self.net_G_1.load_state_dict(torch.load(
-         './checkpoints/1_9_0_vt_t/iter_10000_net_G_1.pth'))
+         './checkpoints/1_13/iter_2000_net_G_1.pth'))
 
 
         print('1')
@@ -238,30 +215,30 @@ class Seg_Depth(BaseModel):
 
         self.net_G_2 = nn.DataParallel(self.net_G_2)
         self.net_G_2.load_state_dict(torch.load(
-        './checkpoints/1_9_0_vt_t/iter_10000_net_G_2.pth'))
+        './checkpoints/1_13/iter_2000_net_G_2.pth'))
         print('2')
 
         self.net_Seg_de = networks5_ds.SEG(n_cls=28).cuda()
       #  self.net_Seg_de = init_net(self.net_Seg_de)
         self.net_Seg_de = nn.DataParallel(self.net_Seg_de)
         self.net_Seg_de.load_state_dict(torch.load(
-            './checkpoints/1_9_0_vt_t/iter_10000_net_Seg_de.pth'))
+            './checkpoints/1_13/iter_8000_net_Seg_de.pth'))
 
         self.net_Dep_de = networks5_ds.DEP().cuda()
        # self.net_Dep_de = init_net(self.net_Dep_de)
         self.net_Dep_de = nn.DataParallel(self.net_Dep_de)
         self.net_Dep_de.load_state_dict(torch.load(
-            './checkpoints/1_9_0_vt_t/iter_10000_net_Dep_de.pth'))
+            './checkpoints/1_13/iter_8000_net_Dep_de.pth'))
            # './checkpoints/1_3_0_vt_t/iter_70000_net_Dep_de.pth'))
         self.net_R_D = networks5_ds.R_dep().cuda()
-        self.net_R_D = nn.DataParallel(self.net_R_D).cuda()
-       # self.net_R_D = init_net(self.net_R_D)
-        self.net_R_D.load_state_dict(torch.load(
-            '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/trymulti/semantic_trans/checkpoints/1_9_0_vt_t/iter_10000_net_R_D.pth'
-       #     '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/trymulti/semantic_trans/checkpoints/1_9_0_vt_t/iter_8000_net_R_D.pth'
+        #self.net_R_D = nn.DataParallel(self.net_R_D).cuda()
+        self.net_R_D = init_net(self.net_R_D)
+       # self.net_R_D.load_state_dict(torch.load(
+        #    '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/trymulti/semantic_trans/checkpoints/1_13/iter_2000_net_R_D.pth'
+       #     '/home/dut-ai/Documents/temp/code/pytorch-CycleGAN-and-pix2pix/my_seg_depth/trymulti/semantic_trans/checkpoints/1_13/iter_8000_net_R_D.pth'
         #    './checkpoints/1_1_4/iter_34000_net_R_D.pth'
        # './checkpoints/1_3_0_vt_t/iter_70000_net_R_D.pth'
-        ))
+        #))
 
         self.net_Dis_80 = networks5_ds.Discriminator(curr_dim=1, repeat_num=3).cuda()
         self.net_Dis_80 = init_net(self.net_Dis_80)
@@ -294,10 +271,10 @@ class Seg_Depth(BaseModel):
                                               )
 
         self.optimizer_Dis_160 = torch.optim.Adam(self.net_Dis_160.parameters(),
-                                              lr=opt.lr / 3, betas=(opt.beta1, 0.999)
+                                              lr=opt.lr / 4, betas=(opt.beta1, 0.999)
                                               )
         self.optimizer_Dis_320 = torch.optim.Adam(self.net_Dis_320.parameters(),
-                                              lr=opt.lr / 3, betas=(opt.beta1, 0.999)
+                                              lr=opt.lr / 4, betas=(opt.beta1, 0.999)
                                               )
 
         self.syn_imgpool = ImagePool(opt.pool_size)
@@ -308,6 +285,7 @@ class Seg_Depth(BaseModel):
         self.criterionDep =torch.nn.L1Loss()
         self.criterionStyle = torch.nn.MSELoss()
         self.criterionEdge = nn.BCELoss()
+        self.criterionDep_bce =  networks5_ds.BCEDepLoss()
     def visual(self,train_or_test):
         if train_or_test=='train':
             self.loss_names = [  # 'G2_dis',
@@ -325,6 +303,7 @@ class Seg_Depth(BaseModel):
                                  'syn_seg_pre', 'real_seg_pre', 'syn_dep_l', 'syn_dep_pre', 'real_dep_pre',
                                  'syn_dep_ref', 'real_dep_ref',
                                  ]
+            self.dep_ref_name = ['real_dep_ref']
             self.model_names = ['G_1', 'G_2', 'Dis0_en',  # ,'Dis1_en',#'Dis2_en','Dis3_en',
                                 'Dep_de',
                                 'Seg_de',
@@ -346,6 +325,7 @@ class Seg_Depth(BaseModel):
                                  'syn_seg_pre', 'real_seg_pre', 'syn_dep_l', 'syn_dep_pre', 'real_dep_pre',
                                  'syn_dep_ref', 'real_dep_ref',
                                  ]
+            self.dep_ref_name = ['real_dep_ref']
             self.model_names = ['G_1', 'G_2', 'Dep_de',
                                 'Seg_de', 'R_D']
 
@@ -356,6 +336,7 @@ class Seg_Depth(BaseModel):
     def set_input(self,input,train_or_test):
         self.real_img = input['img_real'].cuda()
         self.syn_img = input['img_syn'].cuda()
+        self.name = input['name']
         if train_or_test =='train':
             self.is_Train=True
             self.real_seg_l = input['seg_l_real'].squeeze(1).cuda()
@@ -377,6 +358,8 @@ class Seg_Depth(BaseModel):
             self.syn_seg_le = input['seg_e_syn'].float().cuda()
             #self.real_seg_le = input['seg_e_real'].float().cuda()
 
+    def return_name(self):
+        return self.name
     def calc_gradient_penalty(self,netD, real_data, fake_data):
 
         interpolates = real_data
@@ -491,25 +474,11 @@ class Seg_Depth(BaseModel):
 
 
 
-        return self.loss_seg_real+3*loss_D_syn0#+self.loss_seg_syn#+0.05*self.loss_adv_DIS_syn
+        return self.loss_seg_real+loss_D_syn0#+self.loss_seg_syn#+0.05*self.loss_adv_DIS_syn
 
 
 
 
-    def real_dep_loss(self,seg_p, seg_l, dep_p, dep_l):
-        seg_l =seg_l.float().cuda()
-        seg_p = seg_p.detach()
-        new_seg_p = seg_p.max(dim=1)[1].float().cuda()
-
-        print(torch.max(new_seg_p),torch.max(seg_l))
-        nn = torch.zeros(new_seg_p.shape).float().cuda()
-        nn[new_seg_p == seg_l] = 1
-        new_dep_p = (nn * dep_p).float().cuda()
-        dep_l = nn * dep_l
-        print(torch.max(dep_l),torch.max(new_dep_p))
-        loss = self.criterionDep(new_dep_p,dep_l)
-
-        return loss
 
     def backward_DISDEP(self):
         self.set_requires_grad([self.net_G_1, self.net_G_2,
@@ -576,7 +545,7 @@ class Seg_Depth(BaseModel):
             real_dep_ref = r_Seds[2][:,1,:,:].unsqueeze(1)
 
 
-            D_real_loss =se_loss_real+seg_loss_real+self.criterionGAN(D_real_160,False) +self.criterionGAN(D_real_320,False)#+ seg_loss_real#+se_loss_real
+            D_real_loss =se_loss_real+seg_loss_real+0.2*self.criterionGAN(D_real_160,False) +self.criterionGAN(D_real_320,False)#+ seg_loss_real#+se_loss_real
 
 
             self.real_dep_ref = real_dep_ref.detach()
@@ -597,15 +566,21 @@ class Seg_Depth(BaseModel):
         s_se_loss = 0
         s_seg_loss = 0
         dep_loss=0
+
+        o_m, z_m = get_masks(self.syn_dep_l)
+        oms ,zms = get_masks(self.syn_dep_ls)
         B = True
         if B:
             for sed in s_Seds:
                 s_se_loss =s_se_loss+self.criterionEdge(sed[:,0,:,:],self.syn_seg_le)
-                dep_loss = dep_loss+self.criterionDep(sed[:,1,:,:],self.syn_dep_l)
+                dep_loss = dep_loss+self.criterionDep_bce(sed[:,1,:,:],self.syn_dep_l,o_m,z_m)
             for seg in s_Segs:
                 s_seg_loss =s_seg_loss+ self.criterionSeg(seg,self.syn_seg_l)
             for s_Dep in s_Deps:
-                dep_loss = dep_loss+self.criterionDep(s_Dep,self.syn_dep_ls)
+
+                dep_loss = dep_loss+self.criterionDep_bce(s_Dep,self.syn_dep_ls,oms,zms)
+
+
 
 
 
@@ -616,7 +591,7 @@ class Seg_Depth(BaseModel):
        # D_real_320 = self.net_Dis_320(real_dep_320)
         syn_dep_ref = s_Seds[2][:,1,:,:].unsqueeze(1)
         loss_dep_ref = self.criterionDep(s_Seds[2][:,1,:,:],self.syn_dep_l)
-        D_syn_loss = 5* loss_dep_ref+s_se_loss+s_seg_loss
+        D_syn_loss = 10* loss_dep_ref+s_se_loss+s_seg_loss#+dep_loss
         if train_or_test == 'train':
             D_syn_loss.backward()
             self.optimizer_R_D.step()
@@ -691,13 +666,11 @@ class Seg_Depth(BaseModel):
             del seg_real_f2
             self.real_dep_pre = dep_real_pre.detach()
            # self.loss_dep_syn = self.criterionDep(self.syn_dep_pre, self.syn_dep_l)
-            loss_dep_real = self.real_dep_loss(seg_p=seg_real_pre,
-                                                    seg_l=self.syn_seg_l,
-                                                    dep_p=dep_real_pre, dep_l=self.syn_dep_l)
+
 
             # seg_syn_pre, seg_syn_feaetures3 = self.net_Seg_de(syn_f2, syn_inf)
 
-            self.loss_dep_real = loss_dep_real.detach()
+            self.loss_dep_real = 0
             self.loss_G_2 = loss_seg
         else:
             self.loss_G_2=0
