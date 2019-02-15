@@ -119,6 +119,14 @@ if __name__ == '__main__':
                 with open('records.txt', 'a+') as f:
                     f.write(str(epoch) + "-"+str(global_iter) + '{:10.4f},{:10.4f},{:10.4f},{:10.4f},{:10.4f},{:10.4f},{:10.4f}'.format(abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3) + "\n")
                 print("validation done")
+                writer_train.add_scalar("{}val_dep/{}".format(opt.name, 'abs_rel'), abs_rel, global_iter)
+                writer_train.add_scalar("{}val_dep/{}".format(opt.name, 'sq_rel'), sq_rel, global_iter)
+                writer_train.add_scalar("{}val_dep/{}".format(opt.name, 'rmse'), rmse, global_iter)
+                writer_train.add_scalar("{}val_dep/{}".format(opt.name, 'rmse_log'), rmse_log, global_iter)
+                writer_train.add_scalar("{}val_dep/{}".format(opt.name, 'a1'), a1, global_iter)
+                writer_train.add_scalar("{}val_dep/{}".format(opt.name, 'a2'), a2, global_iter)
+                writer_train.add_scalar("{}val_dep/{}".format(opt.name, 'a3'), a3, global_iter)
+
 
 
         #if epoch % 2 == 0:
