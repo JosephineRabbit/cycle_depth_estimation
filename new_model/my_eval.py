@@ -54,7 +54,7 @@ def eval_metric():
 
             pred = cv2.imread(pre_p+'/'+file,0)
             pred = cv2.resize(pred,(gt.shape[1],gt.shape[0]))
-            pred = pred/255*80
+            pred = pred/255*50
            # gt = gt/gt.max()*80
 
             print(gt.max(),gt.min())
@@ -77,7 +77,7 @@ def eval_metric():
                 # depth.save(os.path.join('/data/result/syn_real_result/KITTI/ground_truth/{:05d}.png'.format(t_id)))
 
                 predicted_depth[predicted_depth < 1] = 1
-                predicted_depth[predicted_depth > 80] = 80
+                predicted_depth[predicted_depth > 50] = 50
 
 
 
